@@ -4,15 +4,24 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>cn.flypigeon</groupId>
+    <groupId>com.hidebush</groupId>
     <artifactId>roma</artifactId>
     <packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
+
     <modules>
         <module>roma-server</module>
         <module>roma-client</module>
         <module>roma-util</module>
     </modules>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+            <version>4.1.66.Final</version>
+        </dependency>
+    </dependencies>
 
     <build>
         <plugins>
