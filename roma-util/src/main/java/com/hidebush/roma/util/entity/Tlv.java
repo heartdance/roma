@@ -5,17 +5,26 @@ package com.hidebush.roma.util.entity;
  */
 public class Tlv {
 
-    private byte type;
+    private int type;
 
     private int length;
 
     private byte[] value;
 
-    public byte getType() {
+    public Tlv() {
+    }
+
+    public Tlv(int type, int length, byte[] value) {
+        this.type = type;
+        this.length = length;
+        this.value = value;
+    }
+
+    public int getType() {
         return type;
     }
 
-    public void setType(byte type) {
+    public void setType(int type) {
         this.type = type;
     }
 
