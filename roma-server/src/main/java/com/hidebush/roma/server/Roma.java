@@ -10,10 +10,8 @@ public class Roma {
         roma.startup();
     }
 
-    private ManagementServer managementServer;
-
     public void startup() {
-        managementServer = new ManagementServer(9998);
+        ManagementServer managementServer = new ManagementServer(9998);
         managementServer.startup();
     }
 }

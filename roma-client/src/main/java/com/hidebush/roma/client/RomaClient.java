@@ -7,14 +7,13 @@ public class RomaClient {
 
     public static void main(String[] args) {
         RomaClient romaClient = new RomaClient();
+        romaClient.startup();
 
     }
 
-    private ManagementClient managementClient;
-
     public void startup() {
-        managementClient = new ManagementClient("localhost", 9998);
+        ManagementClient managementClient = new ManagementClient("localhost", 9998);
         managementClient.startup();
-
+        managementClient.createProxy(80, "localhost", 8080);
     }
 }

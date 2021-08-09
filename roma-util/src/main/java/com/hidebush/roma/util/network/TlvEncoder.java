@@ -5,30 +5,37 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
+import io.netty.util.ReferenceCountUtil;
 
 /**
  * Created by htf on 2021/8/6.
  */
 public class TlvEncoder extends ChannelOutboundHandlerAdapter {
 
+    private final int idFieldLength;
     private final int typeFieldLength;
     private final int lengthFieldLength;
 
-    public TlvEncoder(int typeFieldLength, int lengthFieldLength) {
+    public TlvEncoder(int idFieldLength, int typeFieldLength, int lengthFieldLength) {
+        this.idFieldLength = idFieldLength;
         this.typeFieldLength = typeFieldLength;
         this.lengthFieldLength = lengthFieldLength;
     }
 
     @Override
-    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
         if (msg instanceof Tlv) {
             Tlv tlv = (Tlv) msg;
             ByteBuf out = ctx.alloc().ioBuffer();
-            writeInt(out, tlv.getType(), typeFieldLength);
-            writeInt(out, tlv.getLength(), lengthFieldLength);
-            out.writeBytes(tlv.getValue());
-            ctx.write(out, promise);
-            out.release();
+            try {
+                writeInt(out, tlv.getId(), idFieldLength);
+                writeInt(out, tlv.getType(), typeFieldLength);
+                writeInt(out, tlv.getLength(), lengthFieldLength);
+                out.writeBytes(tlv.getValue());
+                ctx.write(out, promise);
+            } finally {
+                ReferenceCountUtil.release(out);
+            }
         } else {
             ctx.write(msg, promise);
         }

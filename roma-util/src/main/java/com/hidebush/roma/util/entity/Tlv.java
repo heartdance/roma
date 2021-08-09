@@ -5,19 +5,29 @@ package com.hidebush.roma.util.entity;
  */
 public class Tlv {
 
-    private int type;
+    private int id;
 
-    private int length;
+    private int type;
 
     private byte[] value;
 
-    public Tlv() {
+    public Tlv(int id, int type, byte[] value) {
+        this.id = id;
+        this.type = type;
+        this.value = value;
     }
 
-    public Tlv(int type, int length, byte[] value) {
+    public Tlv(int type, byte[] value) {
         this.type = type;
-        this.length = length;
         this.value = value;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
     }
 
     public int getType() {
@@ -28,19 +38,15 @@ public class Tlv {
         this.type = type;
     }
 
-    public int getLength() {
-        return length;
-    }
-
-    public void setLength(int length) {
-        this.length = length;
-    }
-
     public byte[] getValue() {
         return value;
     }
 
     public void setValue(byte[] value) {
         this.value = value;
+    }
+
+    public int getLength() {
+        return value.length;
     }
 }
