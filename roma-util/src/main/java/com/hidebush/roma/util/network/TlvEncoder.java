@@ -5,7 +5,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
-import io.netty.util.ReferenceCountUtil;
 
 /**
  * Created by htf on 2021/8/6.
@@ -27,15 +26,13 @@ public class TlvEncoder extends ChannelOutboundHandlerAdapter {
         if (msg instanceof Tlv) {
             Tlv tlv = (Tlv) msg;
             ByteBuf out = ctx.alloc().ioBuffer();
-            try {
-                writeInt(out, tlv.getId(), idFieldLength);
-                writeInt(out, tlv.getType(), typeFieldLength);
-                writeInt(out, tlv.getLength(), lengthFieldLength);
+            writeInt(out, tlv.getId(), idFieldLength);
+            writeInt(out, tlv.getType(), typeFieldLength);
+            writeInt(out, tlv.getLength(), lengthFieldLength);
+            if (tlv.getValue() != null && tlv.getValue().length > 0) {
                 out.writeBytes(tlv.getValue());
-                ctx.write(out, promise);
-            } finally {
-                ReferenceCountUtil.release(out);
             }
+            ctx.write(out, promise);
         } else {
             ctx.write(msg, promise);
         }

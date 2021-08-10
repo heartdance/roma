@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
+ * 管理本地代理
  * Created by htf on 2021/8/6.
  */
 public class ManagementClient extends TcpClient {
@@ -41,7 +42,7 @@ public class ManagementClient extends TcpClient {
     private Tlv sendToManagementServer(Tlv tlv) {
         int id = requestId.incrementAndGet();
         SocketFuture<Tlv> future = new SocketFuture<>();
-        requestFuture.put(requestId.incrementAndGet(), future);
+        requestFuture.put(id, future);
         tlv.setId(id);
         getChannel().writeAndFlush(tlv);
         try {
@@ -57,25 +58,34 @@ public class ManagementClient extends TcpClient {
     }
 
     public void createProxy(int port, String serviceHost, int servicePort) {
+        System.out.println("start create proxy " + serviceHost + ":" + servicePort + " -> " + port);
         Tlv tlv = sendToManagementServer(new Tlv(TypeConstant.CREATE_PROXY, Bytes.toBytes(port, 2)));
         if (tlv == null || tlv.getType() != TypeConstant.SUCCESS) {
-            throw new RomaException();
+            throw new RomaException("create proxy " + serviceHost + ":" + servicePort + " -> " + port + " failed");
         }
-        byte[] value = tlv.getValue();
-        String forwardHost = new String(value, 0, value.length - 2);
-        int forwardPort = Bytes.toInt(value, value.length - 2, 2);
-        createForwardClient(forwardHost, forwardPort, serviceHost, servicePort);
+        int forwardPort = Bytes.toInt(tlv.getValue());
+        createForwardClient(getHost(), forwardPort, serviceHost, servicePort);
+        System.out.println("create proxy " + serviceHost + ":" + servicePort + " -> " + getHost() + ":" + port + " success");
     }
 
     private class TlvHandler extends ChannelInboundHandlerAdapter {
-
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             Tlv tlv = (Tlv) msg;
-            SocketFuture<Tlv> future = requestFuture.remove(tlv.getId());
-            if (future != null) {
-                future.set(tlv);
+            if (tlv.getType() == TypeConstant.PONG) {
+                System.out.println("receive from managementServer pong");
+            } else {
+                SocketFuture<Tlv> future = requestFuture.remove(tlv.getId());
+                if (future != null) {
+                    future.set(tlv);
+                }
             }
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            System.out.println("managementServer disconnect");
+            super.channelInactive(ctx);
         }
     }
 

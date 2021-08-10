@@ -4,7 +4,7 @@ import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 
 /**
  * Created by htf on 2021/8/6.
@@ -22,16 +22,15 @@ public abstract class TcpClient {
 
     public void startup() {
         Bootstrap b = new Bootstrap();
-        EventLoopGroup group = new NioEventLoopGroup();
+        EventLoopGroup group = new NioEventLoopGroup(1);
         b.group(group)
-                .channel(NioServerSocketChannel.class)
+                .channel(NioSocketChannel.class)
                 .handler(new ChannelInitializer<SocketChannel>() {
                     @Override
-                    public void initChannel(SocketChannel ch) throws Exception {
+                    public void initChannel(SocketChannel ch) {
                         TcpClient.this.initChannel(ch);
                     }
-                })
-                .option(ChannelOption.SO_BACKLOG, 128);
+                });
         try {
             ChannelFuture future = b.connect(host, port).sync();
             if (future.isSuccess()) {

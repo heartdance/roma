@@ -5,7 +5,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
-import io.netty.util.ReferenceCountUtil;
 
 /**
  * 连接服务，将服务发出的消息发送到 {@link ForwardClient}
@@ -28,13 +27,10 @@ public class ServiceClient extends TcpClient {
     }
 
     public void sendMsgToService(byte[] data) {
+        System.out.println("send to service " + id + " " + data.length + " bytes");
         ByteBuf out = getChannel().alloc().ioBuffer(data.length);
-        try {
-            out.writeBytes(data);
-            getChannel().writeAndFlush(data);
-        } finally {
-            ReferenceCountUtil.release(out);
-        }
+        out.writeBytes(data);
+        getChannel().writeAndFlush(data);
     }
 
     private class ServiceHandler extends ChannelInboundHandlerAdapter {
@@ -43,9 +39,16 @@ public class ServiceClient extends TcpClient {
             ByteBuf in = (ByteBuf) msg;
             if (in.isReadable()) {
                 byte[] bytes = new byte[in.readableBytes()];
+                System.out.println("receive from service " + id + " " + bytes.length + " bytes");
                 in.readBytes(bytes);
                 forwardClient.sendMsgToForwardServer(id, bytes);
             }
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) {
+            System.out.println("service " + id + " disconnect");
+            forwardClient.sendDisconnectMsgToForwardClient(id);
         }
     }
 }

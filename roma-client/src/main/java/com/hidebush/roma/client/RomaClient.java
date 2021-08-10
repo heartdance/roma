@@ -8,12 +8,18 @@ public class RomaClient {
     public static void main(String[] args) {
         RomaClient romaClient = new RomaClient();
         romaClient.startup();
-
+        romaClient.createProxy(80, "localhost", 8080);
+        romaClient.createProxy(81, "127.0.0.1", 8081);
     }
 
+    private ManagementClient managementClient;
+
     public void startup() {
-        ManagementClient managementClient = new ManagementClient("localhost", 9998);
+        managementClient = new ManagementClient("localhost", 9998);
         managementClient.startup();
-        managementClient.createProxy(80, "localhost", 8080);
+    }
+
+    public void createProxy(int port, String serviceHost, int servicePort) {
+        managementClient.createProxy(port, serviceHost, servicePort);
     }
 }

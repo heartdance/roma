@@ -46,8 +46,15 @@ public class ForwardClient extends TcpClient {
     }
 
     public void sendMsgToForwardServer(int serviceClientId, byte[] data) {
+        System.out.println("send to forwardServer " + serviceClientId + " " + data.length + " bytes");
         Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_SEND_MSG,
                 Bytes.merge(Bytes.toBytes(serviceClientId, 4), data));
+        getChannel().writeAndFlush(tlv);
+    }
+
+    public void sendDisconnectMsgToForwardClient(int serviceClientId) {
+        System.out.println("send to forwardServer " + serviceClientId + " disconnect");
+        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_DISCONNECT, Bytes.toBytes(serviceClientId, 4));
         getChannel().writeAndFlush(tlv);
     }
 
@@ -55,19 +62,35 @@ public class ForwardClient extends TcpClient {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             Tlv tlv = (Tlv) msg;
-            if (tlv.getType() == TypeConstant.ON_VISITOR_CONNECT) {
+            if (tlv.getType() == TypeConstant.PONG) {
+                System.out.println("receive from forwardServer pong");
+            } else if (tlv.getType() == TypeConstant.ON_VISITOR_CONNECT) {
                 int visitorId = Bytes.toInt(tlv.getValue());
+                System.out.println("receive from forwardServer " + visitorId + " connect");
                 createServiceClient(visitorId);
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_SEND_MSG) {
-                int visitorId = Bytes.toInt(tlv.getValue(), 0, 4);
+                byte[] value = tlv.getValue();
+                int visitorId = Bytes.toInt(value, 0, 4);
                 ServiceClient serviceClient = serviceClientMap.get(visitorId);
                 if (serviceClient != null) {
-                    byte[] value = tlv.getValue();
                     byte[] bytes = new byte[value.length - 4];
                     System.arraycopy(value, 4, bytes, 0, bytes.length);
+                    System.out.println("receive from forwardServer " + visitorId + " " + bytes.length + " bytes");
                     serviceClient.sendMsgToService(bytes);
                 }
+            } else if (tlv.getType() == TypeConstant.ON_VISITOR_DISCONNECT) {
+                byte[] value = tlv.getValue();
+                int visitorId = Bytes.toInt(value);
+                System.out.println("receive from forwardServer " + visitorId + " disconnect");
+                ServiceClient serviceClient = serviceClientMap.remove(visitorId);
+                serviceClient.getChannel().close();
             }
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            System.out.println("forwardServer disconnect");
+            super.channelInactive(ctx);
         }
     }
 

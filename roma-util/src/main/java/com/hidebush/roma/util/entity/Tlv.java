@@ -1,5 +1,7 @@
 package com.hidebush.roma.util.entity;
 
+import com.hidebush.roma.util.Bytes;
+
 /**
  * Created by htf on 2021/8/4.
  */
@@ -11,13 +13,22 @@ public class Tlv {
 
     private byte[] value;
 
-    public Tlv(int id, int type, byte[] value) {
-        this.id = id;
+    public Tlv(int type) {
+        this.type = type;
+    }
+
+    public Tlv(int type, byte[] value) {
         this.type = type;
         this.value = value;
     }
 
-    public Tlv(int type, byte[] value) {
+    public Tlv(int id, int type) {
+        this.id = id;
+        this.type = type;
+    }
+
+    public Tlv(int id, int type, byte[] value) {
+        this.id = id;
         this.type = type;
         this.value = value;
     }
@@ -47,6 +58,16 @@ public class Tlv {
     }
 
     public int getLength() {
-        return value.length;
+        return value == null ? 0 : value.length;
+    }
+
+    @Override
+    public String toString() {
+        return "Tlv{" +
+                "id=" + id +
+                ", type=" + type +
+                ", length=" + getLength() +
+                ", value=" + Bytes.toHex(value) +
+                '}';
     }
 }

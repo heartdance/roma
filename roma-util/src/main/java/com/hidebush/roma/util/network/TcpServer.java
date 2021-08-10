@@ -20,12 +20,13 @@ public abstract class TcpServer {
 
     public void startup() {
         ServerBootstrap b = new ServerBootstrap();
-        EventLoopGroup group = new NioEventLoopGroup();
+        EventLoopGroup group = new NioEventLoopGroup(1);
+
         b.group(group)
                 .channel(NioServerSocketChannel.class)
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
-                    public void initChannel(SocketChannel ch) throws Exception {
+                    public void initChannel(SocketChannel ch) {
                         TcpServer.this.initChannel(ch);
                     }
                 })

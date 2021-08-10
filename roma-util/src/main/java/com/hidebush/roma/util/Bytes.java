@@ -12,9 +12,24 @@ public class Bytes {
     public static int toInt(byte[] bytes, int offset, int length) {
         int result = 0;
         for (int i = 0; i < length; i++) {
-            result |= (bytes[offset + i] & 0xFF) << (8 * i);
+            result = result << 8 | bytes[offset + i] & 0xFF;
         }
         return result;
+    }
+
+    public static String toHex(byte[] bytes) {
+        return toHex(bytes, 0, bytes.length);
+    }
+
+    private static final char[] hexDict = new char[] {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'A', 'B', 'C', 'D', 'E', 'F'};
+    public static String toHex(byte[] bytes, int offset, int length) {
+        char[] hex = new char[length * 2];
+        for (int i = 0; i < length; i++) {
+            hex[i * 2] = hexDict[bytes[offset + i] >>> 4 & 0x0F];
+            hex[i * 2 + 1] = hexDict[bytes[offset + i] & 0x0F];
+        }
+        return new String(hex);
     }
 
     public static byte[] toBytes(int num, int length) {
