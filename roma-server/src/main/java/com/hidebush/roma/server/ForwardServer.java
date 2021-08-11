@@ -6,11 +6,15 @@ import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
+import com.hidebush.roma.util.reporter.Reporter;
+import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 连接客户端，将客户端消息发送到 {@link VisitorServer}
@@ -18,11 +22,29 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
  */
 public class ForwardServer extends TcpServer {
 
+    private static final AtomicInteger ids = new AtomicInteger();
+
+    private final int id;
+    private final Reporter reporter;
+
     private VisitorServer visitorServer;
     private Channel forwardClientChannel;
 
+
     public ForwardServer(int localPort) {
         super(localPort);
+        this.id = ids.incrementAndGet();
+        this.reporter = ReporterFactory.createReporter("ForwardServer(" + id + ")");
+    }
+
+    public int id() {
+        return id;
+    }
+
+    public void createVisitorServer(int port) {
+        this.visitorServer = new VisitorServer(port, this);
+        reporter.info("visitorServer(" + visitorServer.id() + ") bind port " + port);
+        this.visitorServer.startup();
     }
 
     @Override
@@ -33,24 +55,20 @@ public class ForwardServer extends TcpServer {
                 .addLast(new TlvHandler());
     }
 
-    public void setVisitorServer(VisitorServer visitorServer) {
-        this.visitorServer = visitorServer;
-    }
-
     public void sendConnectMsgToForwardClient(int visitorId) {
-        System.out.println("send to forwardClient " + visitorId + " connect");
+        reporter.debug("send to forwardClient: visitor(" + visitorId + ") connect");
         Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_CONNECT, Bytes.toBytes(visitorId, 4));
         forwardClientChannel.writeAndFlush(tlv);
     }
 
     public void sendMsgToForwardClient(int visitorId, byte[] data) {
-        System.out.println("send to forwardClient " + visitorId + " " + data.length + " bytes");
+        reporter.debug("send to forwardClient " + data.length + " bytes from visitor(" + visitorId + ")");
         Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_SEND_MSG, Bytes.merge(Bytes.toBytes(visitorId, 4), data));
         forwardClientChannel.writeAndFlush(tlv);
     }
 
     public void sendDisconnectMsgToForwardClient(int visitorId) {
-        System.out.println("send to forwardClient " + visitorId + " disconnect");
+        reporter.debug("send to forwardClient: visitor(" + visitorId + ") disconnect");
         Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_DISCONNECT, Bytes.toBytes(visitorId, 4));
         forwardClientChannel.writeAndFlush(tlv);
     }
@@ -58,7 +76,7 @@ public class ForwardServer extends TcpServer {
     private class TlvHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
-            System.out.println("forwardClient connect");
+            reporter.debug("forwardClient connect");
             forwardClientChannel = ctx.channel();
         }
 
@@ -66,30 +84,31 @@ public class ForwardServer extends TcpServer {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             Tlv tlv = (Tlv) msg;
             if (tlv.getType() == TypeConstant.PING) {
-                System.out.println("receive from forwardClient ping");
-                System.out.println("send to forwardClient pong");
+                reporter.debug("receive from forwardClient: ping");
+                reporter.debug("send to forwardClient: pong");
                 ctx.writeAndFlush(new Tlv(TypeConstant.PONG));
             } else if (tlv.getType() == TypeConstant.ON_SERVICE_SEND_MSG) {
                 byte[] value = tlv.getValue();
                 int visitorId = Bytes.toInt(value, 0, 4);
                 byte[] data = new byte[value.length - 4];
                 System.arraycopy(value, 4, data, 0, data.length);
-                System.out.println("receive from forwardClient " + visitorId + " " + data.length + " bytes");
+                reporter.debug("receive from forwardClient: service " + " send " +
+                        data.length + " bytes to visitor(" + visitorId + ")");
                 visitorServer.sendMsgToVisitor(visitorId, data);
             } else if (tlv.getType() == TypeConstant.ON_SERVICE_DISCONNECT) {
                 byte[] value = tlv.getValue();
                 int visitorId = Bytes.toInt(value);
-                System.out.println("receive from forwardClient " + visitorId + " disconnect");
+                reporter.debug("receive from forwardClient: service " + " disconnect to visitor(" + visitorId + ")");
                 visitorServer.disconnectVisitor(visitorId);
             }
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            System.out.println("forwardClient disconnect");
-            System.out.println("close visitorServer");
+            reporter.debug("forwardClient disconnect");
+            reporter.debug("close visitorServer(" + visitorServer.id() + ")");
             visitorServer.getChannel().close();
-            System.out.println("close forwardServer");
+            reporter.debug("close");
             getChannel().close();
         }
     }

@@ -8,6 +8,8 @@ import com.hidebush.roma.util.exception.RomaException;
 import com.hidebush.roma.util.network.TcpClient;
 import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
+import com.hidebush.roma.util.reporter.Reporter;
+import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
@@ -23,12 +25,23 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ManagementClient extends TcpClient {
 
+    private static final AtomicInteger ids = new AtomicInteger();
+
+    private final int id;
+    private final Reporter reporter;
+
     private final AtomicInteger requestId = new AtomicInteger();
 
     private final ConcurrentMap<Integer, SocketFuture<Tlv>> requestFuture = new ConcurrentHashMap<>();
 
     public ManagementClient(String host, int port) {
         super(host, port);
+        this.id = ids.incrementAndGet();
+        this.reporter = ReporterFactory.createReporter("ManagementClient(" + id + ")");
+    }
+
+    public int id() {
+        return id;
     }
 
     @Override
@@ -55,17 +68,18 @@ public class ManagementClient extends TcpClient {
     private void createForwardClient(String host, int port, String serviceHost, int servicePort) {
         ForwardClient forwardClient = new ForwardClient(host, port, serviceHost, servicePort);
         forwardClient.startup();
+        reporter.info("forwardClient(" + forwardClient.id() + ") startup for proxy " +
+                serviceHost + ":" + servicePort + " -> " + getHost() + ":" + port);
     }
 
     public void createProxy(int port, String serviceHost, int servicePort) {
-        System.out.println("start create proxy " + serviceHost + ":" + servicePort + " -> " + port);
+        reporter.debug("start create proxy " + serviceHost + ":" + servicePort + " -> " + getHost() + ":" + port);
         Tlv tlv = sendToManagementServer(new Tlv(TypeConstant.CREATE_PROXY, Bytes.toBytes(port, 2)));
         if (tlv == null || tlv.getType() != TypeConstant.SUCCESS) {
             throw new RomaException("create proxy " + serviceHost + ":" + servicePort + " -> " + port + " failed");
         }
         int forwardPort = Bytes.toInt(tlv.getValue());
         createForwardClient(getHost(), forwardPort, serviceHost, servicePort);
-        System.out.println("create proxy " + serviceHost + ":" + servicePort + " -> " + getHost() + ":" + port + " success");
     }
 
     private class TlvHandler extends ChannelInboundHandlerAdapter {
@@ -73,7 +87,7 @@ public class ManagementClient extends TcpClient {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             Tlv tlv = (Tlv) msg;
             if (tlv.getType() == TypeConstant.PONG) {
-                System.out.println("receive from managementServer pong");
+                reporter.debug("receive from managementServer: pong");
             } else {
                 SocketFuture<Tlv> future = requestFuture.remove(tlv.getId());
                 if (future != null) {
@@ -84,7 +98,7 @@ public class ManagementClient extends TcpClient {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            System.out.println("managementServer disconnect");
+            reporter.error("managementServer disconnect");
             super.channelInactive(ctx);
         }
     }

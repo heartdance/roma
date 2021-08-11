@@ -1,10 +1,14 @@
 package com.hidebush.roma.client;
 
 import com.hidebush.roma.util.network.TcpClient;
+import com.hidebush.roma.util.reporter.Reporter;
+import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 连接服务，将服务发出的消息发送到 {@link ForwardClient}
@@ -12,13 +16,24 @@ import io.netty.channel.socket.SocketChannel;
  */
 public class ServiceClient extends TcpClient {
 
+    private static final AtomicInteger ids = new AtomicInteger();
+
     private final int id;
+    private final Reporter reporter;
+
+    private final int visitorId;
     private final ForwardClient forwardClient;
 
-    public ServiceClient(int id, String host, int port, ForwardClient forwardClient) {
+    public ServiceClient(int visitorId, String host, int port, ForwardClient forwardClient) {
         super(host, port);
-        this.id = id;
+        this.visitorId = visitorId;
         this.forwardClient = forwardClient;
+        this.id = ids.incrementAndGet();
+        this.reporter = ReporterFactory.createReporter("ServiceClient(" + id + ")");
+    }
+
+    public int id() {
+        return id;
     }
 
     @Override
@@ -27,7 +42,7 @@ public class ServiceClient extends TcpClient {
     }
 
     public void sendMsgToService(byte[] data) {
-        System.out.println("send to service " + id + " " + data.length + " bytes");
+        reporter.debug("send to service " + data.length + " bytes");
         ByteBuf out = getChannel().alloc().ioBuffer(data.length);
         out.writeBytes(data);
         getChannel().writeAndFlush(data);
@@ -39,16 +54,16 @@ public class ServiceClient extends TcpClient {
             ByteBuf in = (ByteBuf) msg;
             if (in.isReadable()) {
                 byte[] bytes = new byte[in.readableBytes()];
-                System.out.println("receive from service " + id + " " + bytes.length + " bytes");
+                reporter.debug("receive from service " + bytes.length + " bytes");
                 in.readBytes(bytes);
-                forwardClient.sendMsgToForwardServer(id, bytes);
+                forwardClient.sendMsgToForwardServer(visitorId, bytes);
             }
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            System.out.println("service " + id + " disconnect");
-            forwardClient.sendDisconnectMsgToForwardClient(id);
+            reporter.debug("service disconnect");
+            forwardClient.sendDisconnectMsgToForwardClient(visitorId);
         }
     }
 }

@@ -6,6 +6,8 @@ import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.network.TcpClient;
 import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
+import com.hidebush.roma.util.reporter.Reporter;
+import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
@@ -13,12 +15,18 @@ import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 连接服务端，转发服务端消息到 {@link ServiceClient}
  * Created by htf on 2021/8/6.
  */
 public class ForwardClient extends TcpClient {
+
+    private static final AtomicInteger ids = new AtomicInteger();
+
+    private final int id;
+    private final Reporter reporter;
 
     private final String serviceHost;
     private final int servicePort;
@@ -29,6 +37,12 @@ public class ForwardClient extends TcpClient {
         super(host, port);
         this.serviceHost = serviceHost;
         this.servicePort = servicePort;
+        this.id = ids.incrementAndGet();
+        this.reporter = ReporterFactory.createReporter("ForwardClient(" + id + ")");
+    }
+
+    public int id() {
+        return id;
     }
 
     @Override
@@ -43,18 +57,23 @@ public class ForwardClient extends TcpClient {
         ServiceClient serviceClient = new ServiceClient(id, serviceHost, servicePort, this);
         serviceClientMap.put(id, serviceClient);
         serviceClient.startup();
+        reporter.debug("serviceClient(" + serviceClient.id() + ") connect to " + serviceHost + ":" + servicePort);
     }
 
-    public void sendMsgToForwardServer(int serviceClientId, byte[] data) {
-        System.out.println("send to forwardServer " + serviceClientId + " " + data.length + " bytes");
+    public void sendMsgToForwardServer(int visitorId, byte[] data) {
+        ServiceClient serviceClient = serviceClientMap.get(visitorId);
+        reporter.debug("send to forwardServer: serviceClient(" + serviceClient.id() +
+                ") send " + data.length + " bytes to visitor " + visitorId);
         Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_SEND_MSG,
-                Bytes.merge(Bytes.toBytes(serviceClientId, 4), data));
+                Bytes.merge(Bytes.toBytes(visitorId, 4), data));
         getChannel().writeAndFlush(tlv);
     }
 
-    public void sendDisconnectMsgToForwardClient(int serviceClientId) {
-        System.out.println("send to forwardServer " + serviceClientId + " disconnect");
-        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_DISCONNECT, Bytes.toBytes(serviceClientId, 4));
+    public void sendDisconnectMsgToForwardClient(int visitorId) {
+        ServiceClient serviceClient = serviceClientMap.get(visitorId);
+        reporter.debug("send to forwardServer: serviceClient(" + serviceClient.id() +
+                ") disconnect to visitor " + visitorId);
+        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_DISCONNECT, Bytes.toBytes(visitorId, 4));
         getChannel().writeAndFlush(tlv);
     }
 
@@ -63,10 +82,10 @@ public class ForwardClient extends TcpClient {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             Tlv tlv = (Tlv) msg;
             if (tlv.getType() == TypeConstant.PONG) {
-                System.out.println("receive from forwardServer pong");
+                reporter.debug("receive from forwardServer: pong");
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_CONNECT) {
                 int visitorId = Bytes.toInt(tlv.getValue());
-                System.out.println("receive from forwardServer " + visitorId + " connect");
+                reporter.debug("receive from forwardServer: visitor(" + visitorId + ") connect");
                 createServiceClient(visitorId);
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_SEND_MSG) {
                 byte[] value = tlv.getValue();
@@ -75,13 +94,14 @@ public class ForwardClient extends TcpClient {
                 if (serviceClient != null) {
                     byte[] bytes = new byte[value.length - 4];
                     System.arraycopy(value, 4, bytes, 0, bytes.length);
-                    System.out.println("receive from forwardServer " + visitorId + " " + bytes.length + " bytes");
+                    reporter.debug("receive from forwardServer: visitor(" + visitorId +
+                            ") send " + bytes.length + " bytes");
                     serviceClient.sendMsgToService(bytes);
                 }
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_DISCONNECT) {
                 byte[] value = tlv.getValue();
                 int visitorId = Bytes.toInt(value);
-                System.out.println("receive from forwardServer " + visitorId + " disconnect");
+                reporter.debug("receive from forwardServer: visitor(" + visitorId + ") disconnect");
                 ServiceClient serviceClient = serviceClientMap.remove(visitorId);
                 serviceClient.getChannel().close();
             }
@@ -89,7 +109,7 @@ public class ForwardClient extends TcpClient {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-            System.out.println("forwardServer disconnect");
+            reporter.debug("forwardServer disconnect");
             super.channelInactive(ctx);
         }
     }
