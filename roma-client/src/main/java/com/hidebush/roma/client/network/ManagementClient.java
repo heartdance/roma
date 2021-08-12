@@ -1,4 +1,4 @@
-package com.hidebush.roma.client;
+package com.hidebush.roma.client.network;
 
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
@@ -37,7 +37,7 @@ public class ManagementClient extends TcpClient {
     public ManagementClient(String host, int port) {
         super(host, port);
         this.id = ids.incrementAndGet();
-        this.reporter = ReporterFactory.createReporter("ManagementClient(" + id + ")");
+        this.reporter = ReporterFactory.createReporter("ManagementClient", id);
     }
 
     public int id() {
@@ -68,15 +68,17 @@ public class ManagementClient extends TcpClient {
     private void createForwardClient(String host, int port, String serviceHost, int servicePort) {
         ForwardClient forwardClient = new ForwardClient(host, port, serviceHost, servicePort);
         forwardClient.startup();
-        reporter.info("forwardClient(" + forwardClient.id() + ") startup for proxy " +
-                serviceHost + ":" + servicePort + " -> " + getHost() + ":" + port);
+        reporter.info("forwardClient(" + forwardClient.id() + ") connect to " + host + ":" + port +
+                " and forward with " + serviceHost + ":" + servicePort);
     }
 
     public void createProxy(int port, String serviceHost, int servicePort) {
-        reporter.debug("start create proxy " + serviceHost + ":" + servicePort + " -> " + getHost() + ":" + port);
+        reporter.debug("send to managementServer: create proxy " + getHost() + ":" + port +
+                " for " + serviceHost + ":" + servicePort);
         Tlv tlv = sendToManagementServer(new Tlv(TypeConstant.CREATE_PROXY, Bytes.toBytes(port, 2)));
         if (tlv == null || tlv.getType() != TypeConstant.SUCCESS) {
-            throw new RomaException("create proxy " + serviceHost + ":" + servicePort + " -> " + port + " failed");
+            throw new RomaException("create proxy " + getHost() + ":" + port +
+                    " for " + serviceHost + ":" + servicePort + " failed");
         }
         int forwardPort = Bytes.toInt(tlv.getValue());
         createForwardClient(getHost(), forwardPort, serviceHost, servicePort);

@@ -10,10 +10,10 @@ public class ConsoleReporter implements Reporter {
 
     private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final String role;
+    private final String roleDisplayName;
 
-    public ConsoleReporter(String role) {
-        this.role = role;
+    public ConsoleReporter(String role, int id) {
+        this.roleDisplayName = formatRole(role + "(" + id + ")");
     }
 
     @Override
@@ -37,16 +37,16 @@ public class ConsoleReporter implements Reporter {
     }
 
     private void out(String level, String msg) {
-        System.out.println(formatter.format(LocalDateTime.now()) + " [" + level + "] " + formatRole(role) + " " + msg);
+        System.out.println(formatter.format(LocalDateTime.now()) + " [" + level + "] " + roleDisplayName + " " + msg);
     }
 
-    private String formatRole(String role) {
-        if (role.length() <= 20) {
-            return String.format("%-25s", role);
+    private String formatRole(String name) {
+        if (name.length() <= 20) {
+            return String.format("%-25s", name);
         }
-        if (role.length() <= 30) {
-            return String.format("%-35s", role);
+        if (name.length() <= 30) {
+            return String.format("%-35s", name);
         }
-        return role;
+        return name;
     }
 }

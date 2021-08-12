@@ -1,4 +1,4 @@
-package com.hidebush.roma.server;
+package com.hidebush.roma.server.network;
 
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
@@ -30,11 +30,10 @@ public class ForwardServer extends TcpServer {
     private VisitorServer visitorServer;
     private Channel forwardClientChannel;
 
-
-    public ForwardServer(int localPort) {
-        super(localPort);
+    public ForwardServer() {
+        super(0);
         this.id = ids.incrementAndGet();
-        this.reporter = ReporterFactory.createReporter("ForwardServer(" + id + ")");
+        this.reporter = ReporterFactory.createReporter("ForwardServer", id);
     }
 
     public int id() {

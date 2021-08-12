@@ -1,4 +1,4 @@
-package com.hidebush.roma.client;
+package com.hidebush.roma.client.network;
 
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
@@ -38,7 +38,7 @@ public class ForwardClient extends TcpClient {
         this.serviceHost = serviceHost;
         this.servicePort = servicePort;
         this.id = ids.incrementAndGet();
-        this.reporter = ReporterFactory.createReporter("ForwardClient(" + id + ")");
+        this.reporter = ReporterFactory.createReporter("ForwardClient", id);
     }
 
     public int id() {
@@ -53,9 +53,9 @@ public class ForwardClient extends TcpClient {
                 .addLast(new TlvHandler());
     }
 
-    private void createServiceClient(int id) {
-        ServiceClient serviceClient = new ServiceClient(id, serviceHost, servicePort, this);
-        serviceClientMap.put(id, serviceClient);
+    private void createServiceClient(int visitorId) {
+        ServiceClient serviceClient = new ServiceClient(visitorId, serviceHost, servicePort, this);
+        serviceClientMap.put(visitorId, serviceClient);
         serviceClient.startup();
         reporter.debug("serviceClient(" + serviceClient.id() + ") connect to " + serviceHost + ":" + servicePort);
     }
@@ -63,16 +63,16 @@ public class ForwardClient extends TcpClient {
     public void sendMsgToForwardServer(int visitorId, byte[] data) {
         ServiceClient serviceClient = serviceClientMap.get(visitorId);
         reporter.debug("send to forwardServer: serviceClient(" + serviceClient.id() +
-                ") send " + data.length + " bytes to visitor " + visitorId);
+                ") send " + data.length + " bytes to visitor(" + visitorId + ")");
         Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_SEND_MSG,
                 Bytes.merge(Bytes.toBytes(visitorId, 4), data));
         getChannel().writeAndFlush(tlv);
     }
 
-    public void sendDisconnectMsgToForwardClient(int visitorId) {
-        ServiceClient serviceClient = serviceClientMap.get(visitorId);
-        reporter.debug("send to forwardServer: serviceClient(" + serviceClient.id() +
-                ") disconnect to visitor " + visitorId);
+    public void sendDisconnectMsgToForwardServer(int visitorId) {
+        ServiceClient serviceClient = serviceClientMap.remove(visitorId);
+        reporter.debug("send to forwardServer: serviceClient(" + (serviceClient == null ? null : serviceClient.id()) +
+                ") disconnect to visitor(" + visitorId + ")");
         Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_DISCONNECT, Bytes.toBytes(visitorId, 4));
         getChannel().writeAndFlush(tlv);
     }
@@ -103,7 +103,11 @@ public class ForwardClient extends TcpClient {
                 int visitorId = Bytes.toInt(value);
                 reporter.debug("receive from forwardServer: visitor(" + visitorId + ") disconnect");
                 ServiceClient serviceClient = serviceClientMap.remove(visitorId);
-                serviceClient.getChannel().close();
+                reporter.debug("disconnect serviceClient(" +
+                        (serviceClient == null ? null : serviceClient.id()) + ")");
+                if (serviceClient != null) {
+                    serviceClient.getChannel().close();
+                }
             }
         }
 

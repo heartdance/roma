@@ -6,12 +6,14 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 
+import java.net.InetSocketAddress;
+
 /**
  * Created by htf on 2021/8/5.
  */
 public abstract class TcpServer {
 
-    private final int localPort;
+    private int localPort;
     private Channel channel;
 
     public TcpServer(int localPort) {
@@ -36,6 +38,8 @@ public abstract class TcpServer {
             ChannelFuture future = b.bind(localPort).sync();
             if (future.isSuccess()) {
                 channel = future.channel();
+                InetSocketAddress socketAddress = (InetSocketAddress) channel.localAddress();
+                localPort = socketAddress.getPort();
             }
         } catch (InterruptedException ignored) {
         }

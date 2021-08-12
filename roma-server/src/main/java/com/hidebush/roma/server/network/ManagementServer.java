@@ -1,4 +1,4 @@
-package com.hidebush.roma.server;
+package com.hidebush.roma.server.network;
 
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
@@ -31,13 +31,12 @@ public class ManagementServer extends TcpServer {
     private final int id;
     private final Reporter reporter;
 
-    private final PortManager portManager = new PortManager();
     private final ConcurrentMap<ChannelId, List<ForwardServer>> clientForwardServers = new ConcurrentHashMap<>();
 
     public ManagementServer(int localPort) {
         super(localPort);
         this.id = ids.incrementAndGet();
-        this.reporter = ReporterFactory.createReporter("ManagementServer(" + id + ")");
+        this.reporter = ReporterFactory.createReporter("ManagementServer", id);
     }
 
     public int id() {
@@ -53,7 +52,7 @@ public class ManagementServer extends TcpServer {
     }
 
     private ForwardServer createForwardServer(ChannelId clientId, int visitorServerPort) {
-        ForwardServer forwardServer = new ForwardServer(portManager.getFreePort());
+        ForwardServer forwardServer = new ForwardServer();
         forwardServer.startup();
         reporter.info("forwardServer(" + forwardServer.id() + ") bind port " + forwardServer.getLocalPort());
         forwardServer.createVisitorServer(visitorServerPort);

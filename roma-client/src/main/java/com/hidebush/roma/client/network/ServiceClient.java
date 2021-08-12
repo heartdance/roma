@@ -1,4 +1,4 @@
-package com.hidebush.roma.client;
+package com.hidebush.roma.client.network;
 
 import com.hidebush.roma.util.network.TcpClient;
 import com.hidebush.roma.util.reporter.Reporter;
@@ -6,6 +6,7 @@ import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,7 +30,7 @@ public class ServiceClient extends TcpClient {
         this.visitorId = visitorId;
         this.forwardClient = forwardClient;
         this.id = ids.incrementAndGet();
-        this.reporter = ReporterFactory.createReporter("ServiceClient(" + id + ")");
+        this.reporter = ReporterFactory.createReporter("ServiceClient", id);
     }
 
     public int id() {
@@ -38,14 +39,15 @@ public class ServiceClient extends TcpClient {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new ServiceHandler());
+        ch.pipeline().addLast(new ServiceHandler())
+                .addLast(new ChannelOutboundHandlerAdapter());
     }
 
     public void sendMsgToService(byte[] data) {
         reporter.debug("send to service " + data.length + " bytes");
         ByteBuf out = getChannel().alloc().ioBuffer(data.length);
         out.writeBytes(data);
-        getChannel().writeAndFlush(data);
+        getChannel().writeAndFlush(out);
     }
 
     private class ServiceHandler extends ChannelInboundHandlerAdapter {
@@ -62,8 +64,8 @@ public class ServiceClient extends TcpClient {
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            reporter.debug("service disconnect");
-            forwardClient.sendDisconnectMsgToForwardClient(visitorId);
+            reporter.debug("disconnect");
+            forwardClient.sendDisconnectMsgToForwardServer(visitorId);
         }
     }
 }

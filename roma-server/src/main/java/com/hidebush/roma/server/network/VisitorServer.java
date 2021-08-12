@@ -1,15 +1,10 @@
-package com.hidebush.roma.server;
+package com.hidebush.roma.server.network;
 
-import com.hidebush.roma.util.config.TypeConstant;
-import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelId;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,7 +31,7 @@ public class VisitorServer extends TcpServer {
         super(localPort);
         this.forwardServer = forwardServer;
         this.id = ids.incrementAndGet();
-        this.reporter = ReporterFactory.createReporter("VisitorServer(" + id + ")");
+        this.reporter = ReporterFactory.createReporter("VisitorServer", id);
     }
 
     public int id() {
@@ -45,12 +40,16 @@ public class VisitorServer extends TcpServer {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new VisitorHandler());
+        ch.pipeline().addLast(new VisitorHandler())
+                .addLast(new ChannelOutboundHandlerAdapter());
     }
 
     public void sendMsgToVisitor(int visitorId, byte[] data) {
         reporter.debug("send to visitor(" + visitorId + ") " + data.length + " bytes");
-        visitorChannel.get(visitorId).writeAndFlush(new Tlv(TypeConstant.ON_VISITOR_SEND_MSG, data));
+        Channel channel = visitorChannel.get(visitorId);
+        ByteBuf out = channel.alloc().ioBuffer(data.length);
+        out.writeBytes(data);
+        channel.writeAndFlush(out);
     }
 
     public void disconnectVisitor(int visitorId) {
