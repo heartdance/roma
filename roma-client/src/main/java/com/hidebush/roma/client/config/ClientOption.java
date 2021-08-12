@@ -14,6 +14,9 @@ public class ClientOption {
     public static final Option<Integer> SERVER_PORT = new Option<>(
             "server_port", 9989, Integer.class, "p","port", "server_port");
 
-    public static final Option<StringList> PROXY = new Option<>(
-            "proxy", new StringList(), StringList.class,"proxy");
+    public static final Option<StringList> TCP_PROXY = new Option<>(
+            "tcp_proxy", new StringList(), StringList.class,"t", "tcp_proxy");
+
+    public static final Option<StringList> UDP_PROXY = new Option<>(
+            "udp_proxy", new StringList(), StringList.class,"u", "udp_proxy");
 }
