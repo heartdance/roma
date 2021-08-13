@@ -1,5 +1,6 @@
 package com.hidebush.roma.server.network;
 
+import com.hidebush.roma.server.entity.ClientInfo;
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.Tlv;
@@ -8,16 +9,18 @@ import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -31,7 +34,7 @@ public class ManagementServer extends TcpServer {
     private final int id;
     private final Reporter reporter;
 
-    private final ConcurrentMap<ChannelId, List<ForwardServer>> clientForwardServers = new ConcurrentHashMap<>();
+    private final ConcurrentMap<ChannelId, ClientInfo> clientForwardServers = new ConcurrentHashMap<>();
 
     public ManagementServer(int localPort) {
         super(localPort);
@@ -45,9 +48,10 @@ public class ManagementServer extends TcpServer {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 5, 2))
-                .addLast(new TlvEncoder(4, 1, 2))
-                .addLast(new TlvDecoder(4, 1, 2))
+        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
+                .addLast(new IdleStateHandler(300, 0, 0))
+                .addLast(new TlvEncoder(1, 2))
+                .addLast(new TlvDecoder(1, 2))
                 .addLast(new TlvHandler());
     }
 
@@ -56,14 +60,15 @@ public class ManagementServer extends TcpServer {
         forwardServer.startup();
         reporter.info("forwardServer(" + forwardServer.id() + ") bind port " + forwardServer.getLocalPort());
         forwardServer.createVisitorServer(visitorServerPort);
-        clientForwardServers.computeIfAbsent(clientId, k -> new CopyOnWriteArrayList<>()).add(forwardServer);
+        clientForwardServers.get(clientId).getForwardServers().add(forwardServer);
         return forwardServer;
     }
 
     private class TlvHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
-            reporter.info("managementClient connect");
+            reporter.info("managementClient connect: " + ctx.channel().remoteAddress());
+            clientForwardServers.put(ctx.channel().id(), new ClientInfo(ctx.channel().remoteAddress()));
         }
 
         @Override
@@ -74,23 +79,39 @@ public class ManagementServer extends TcpServer {
                 reporter.debug("send to managementClient: pong");
                 ctx.writeAndFlush(new Tlv(TypeConstant.PONG));
             } else if (tlv.getType() == TypeConstant.CREATE_PROXY) {
-                int id = tlv.getId();
-                byte[] value = tlv.getValue();
-                int port = Bytes.toInt(value, 0, 2);
+                int port = Bytes.toInt(tlv.getValue(), 4, 2);
                 reporter.info("create proxy on port " + port);
                 ForwardServer forwardServer = createForwardServer(ctx.channel().id(), port);
                 reporter.debug("send to managementClient: proxy on port " + port + " created");
-                ctx.writeAndFlush(new Tlv(id, TypeConstant.SUCCESS, Bytes.toBytes(forwardServer.getLocalPort(), 2)));
+                byte[] bytes = new byte[6];
+                System.arraycopy(tlv.getValue(), 0, bytes, 0, 4);
+                System.arraycopy(Bytes.toBytes(forwardServer.getLocalPort(), 2), 0,
+                        bytes, 4, 2);
+                ctx.writeAndFlush(new Tlv(TypeConstant.SUCCESS, bytes));
+            }
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+            if (evt instanceof IdleStateEvent) {
+                IdleState state = ((IdleStateEvent) evt).state();
+                if (state == IdleState.READER_IDLE) {
+                    reporter.error("disconnect managementClient " + ctx.channel().remoteAddress() +
+                            " because of reader timeout");
+                    ctx.channel().close();
+                }
             }
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
             reporter.info("managementClient disconnect");
-            reporter.debug("close forwardServers");
-            List<ForwardServer> forwardServers = clientForwardServers.remove(ctx.channel().id());
-            for (ForwardServer forwardServer : forwardServers) {
-                forwardServer.getChannel().close();
+            ClientInfo clientInfo = clientForwardServers.remove(ctx.channel().id());
+            if (clientInfo != null) {
+                reporter.debug("disconnect forwardServers of client " + clientInfo.getSocketAddress());
+                for (ForwardServer forwardServer : clientInfo.getForwardServers()) {
+                    forwardServer.getChannel().close();
+                }
             }
         }
     }

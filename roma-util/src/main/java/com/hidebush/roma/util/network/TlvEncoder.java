@@ -11,12 +11,10 @@ import io.netty.channel.ChannelPromise;
  */
 public class TlvEncoder extends ChannelOutboundHandlerAdapter {
 
-    private final int idFieldLength;
     private final int typeFieldLength;
     private final int lengthFieldLength;
 
-    public TlvEncoder(int idFieldLength, int typeFieldLength, int lengthFieldLength) {
-        this.idFieldLength = idFieldLength;
+    public TlvEncoder(int typeFieldLength, int lengthFieldLength) {
         this.typeFieldLength = typeFieldLength;
         this.lengthFieldLength = lengthFieldLength;
     }
@@ -26,7 +24,6 @@ public class TlvEncoder extends ChannelOutboundHandlerAdapter {
         if (msg instanceof Tlv) {
             Tlv tlv = (Tlv) msg;
             ByteBuf out = ctx.alloc().ioBuffer();
-            writeInt(out, tlv.getId(), idFieldLength);
             writeInt(out, tlv.getType(), typeFieldLength);
             writeInt(out, tlv.getLength(), lengthFieldLength);
             if (tlv.getValue() != null && tlv.getValue().length > 0) {

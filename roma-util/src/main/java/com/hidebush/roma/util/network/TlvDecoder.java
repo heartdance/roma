@@ -10,12 +10,10 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
  */
 public class TlvDecoder extends ChannelInboundHandlerAdapter {
 
-    private final int idFieldLength;
     private final int typeFieldLength;
     private final int lengthFieldLength;
 
-    public TlvDecoder(int idFieldLength, int typeFieldLength, int lengthFieldLength) {
-        this.idFieldLength = idFieldLength;
+    public TlvDecoder(int typeFieldLength, int lengthFieldLength) {
         this.typeFieldLength = typeFieldLength;
         this.lengthFieldLength = lengthFieldLength;
     }
@@ -23,7 +21,6 @@ public class TlvDecoder extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         ByteBuf in = (ByteBuf) msg;
-        int id = readInt(in, idFieldLength);
         int type = readInt(in, typeFieldLength);
         int length = readInt(in, lengthFieldLength);
         if (length < 0) {
@@ -33,7 +30,7 @@ public class TlvDecoder extends ChannelInboundHandlerAdapter {
         if (length > 0) {
             in.readBytes(bytes);
         }
-        ctx.fireChannelRead(new Tlv(id, type, bytes));
+        ctx.fireChannelRead(new Tlv(type, bytes));
     }
     
     private int readInt(ByteBuf in, int length) {

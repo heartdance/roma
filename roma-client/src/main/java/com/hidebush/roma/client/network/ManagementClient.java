@@ -14,6 +14,9 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -46,18 +49,21 @@ public class ManagementClient extends TcpClient {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 5, 2))
-                .addLast(new TlvEncoder(4, 1, 2))
-                .addLast(new TlvDecoder(4, 1, 2))
+        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
+                .addLast(new IdleStateHandler(300, 10, 0))
+                .addLast(new TlvEncoder(1, 2))
+                .addLast(new TlvDecoder(1, 2))
                 .addLast(new TlvHandler());
     }
 
-    private Tlv sendToManagementServer(Tlv tlv) {
+    private Tlv sendCreateProxyMsgAndGetResponse(int proxyPort) {
         int id = requestId.incrementAndGet();
         SocketFuture<Tlv> future = new SocketFuture<>();
         requestFuture.put(id, future);
-        tlv.setId(id);
-        getChannel().writeAndFlush(tlv);
+        byte[] bytes = new byte[6];
+        System.arraycopy(Bytes.toBytes(id, 4), 0, bytes, 0, 4);
+        System.arraycopy(Bytes.toBytes(proxyPort, 2), 0, bytes, 4, 2);
+        getChannel().writeAndFlush(new Tlv(TypeConstant.CREATE_PROXY, bytes));
         try {
             return future.get();
         } catch (InterruptedException e) {
@@ -75,12 +81,12 @@ public class ManagementClient extends TcpClient {
     public void createProxy(int port, String serviceHost, int servicePort) {
         reporter.debug("send to managementServer: create proxy " + getHost() + ":" + port +
                 " for " + serviceHost + ":" + servicePort);
-        Tlv tlv = sendToManagementServer(new Tlv(TypeConstant.CREATE_PROXY, Bytes.toBytes(port, 2)));
+        Tlv tlv = sendCreateProxyMsgAndGetResponse(port);
         if (tlv == null || tlv.getType() != TypeConstant.SUCCESS) {
             throw new RomaException("create proxy " + getHost() + ":" + port +
                     " for " + serviceHost + ":" + servicePort + " failed");
         }
-        int forwardPort = Bytes.toInt(tlv.getValue());
+        int forwardPort = Bytes.toInt(tlv.getValue(), 4, 2);
         createForwardClient(getHost(), forwardPort, serviceHost, servicePort);
     }
 
@@ -90,11 +96,23 @@ public class ManagementClient extends TcpClient {
             Tlv tlv = (Tlv) msg;
             if (tlv.getType() == TypeConstant.PONG) {
                 reporter.debug("receive from managementServer: pong");
-            } else {
-                SocketFuture<Tlv> future = requestFuture.remove(tlv.getId());
+            } else if (tlv.getType() == TypeConstant.SUCCESS || tlv.getType() == TypeConstant.FAILED) {
+                SocketFuture<Tlv> future = requestFuture.remove(Bytes.toInt(tlv.getValue(), 0, 4));
                 if (future != null) {
                     future.set(tlv);
                 }
+            }
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+            IdleState state = ((IdleStateEvent) evt).state();
+            if (state == IdleState.WRITER_IDLE) {
+                reporter.debug("send to managementServer: ping");
+                ctx.channel().writeAndFlush(new Tlv(TypeConstant.PING));
+            } else if (state == IdleState.READER_IDLE) {
+                reporter.error("disconnect because of reader time out");
+                ctx.channel().close();
             }
         }
 

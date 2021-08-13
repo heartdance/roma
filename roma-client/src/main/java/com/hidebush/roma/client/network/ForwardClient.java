@@ -12,6 +12,9 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -47,9 +50,10 @@ public class ForwardClient extends TcpClient {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 5, 2))
-                .addLast(new TlvEncoder(4, 1, 2))
-                .addLast(new TlvDecoder(4, 1, 2))
+        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
+                .addLast(new IdleStateHandler(300, 10, 0))
+                .addLast(new TlvEncoder(1, 2))
+                .addLast(new TlvDecoder(1, 2))
                 .addLast(new TlvHandler());
     }
 
@@ -108,6 +112,18 @@ public class ForwardClient extends TcpClient {
                 if (serviceClient != null) {
                     serviceClient.getChannel().close();
                 }
+            }
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+            IdleState state = ((IdleStateEvent) evt).state();
+            if (state == IdleState.WRITER_IDLE) {
+                reporter.debug("send to forwardServer: ping");
+                ctx.channel().writeAndFlush(new Tlv(TypeConstant.PING));
+            } else if (state == IdleState.READER_IDLE) {
+                reporter.error("disconnect forwardServer because of reader time out");
+                ctx.channel().close();
             }
         }
 

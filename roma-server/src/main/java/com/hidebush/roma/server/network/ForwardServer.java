@@ -13,6 +13,9 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.handler.timeout.IdleStateHandler;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -48,9 +51,10 @@ public class ForwardServer extends TcpServer {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 5, 2))
-                .addLast(new TlvEncoder(4, 1, 2))
-                .addLast(new TlvDecoder(4, 1, 2))
+        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
+                .addLast(new IdleStateHandler(300, 0, 0))
+                .addLast(new TlvEncoder(1, 2))
+                .addLast(new TlvDecoder(1, 2))
                 .addLast(new TlvHandler());
     }
 
@@ -99,6 +103,18 @@ public class ForwardServer extends TcpServer {
                 int visitorId = Bytes.toInt(value);
                 reporter.debug("receive from forwardClient: service " + " disconnect to visitor(" + visitorId + ")");
                 visitorServer.disconnectVisitor(visitorId);
+            }
+        }
+
+        @Override
+        public void userEventTriggered(ChannelHandlerContext ctx, Object evt) {
+            if (evt instanceof IdleStateEvent) {
+                IdleState state = ((IdleStateEvent) evt).state();
+                if (state == IdleState.READER_IDLE) {
+                    reporter.error("disconnect forwardClient " + ctx.channel().remoteAddress() +
+                            " because of reader timeout");
+                    ctx.channel().close();
+                }
             }
         }
 

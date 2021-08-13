@@ -7,8 +7,6 @@ import com.hidebush.roma.util.Bytes;
  */
 public class Tlv {
 
-    private int id;
-
     private int type;
 
     private byte[] value;
@@ -20,25 +18,6 @@ public class Tlv {
     public Tlv(int type, byte[] value) {
         this.type = type;
         this.value = value;
-    }
-
-    public Tlv(int id, int type) {
-        this.id = id;
-        this.type = type;
-    }
-
-    public Tlv(int id, int type, byte[] value) {
-        this.id = id;
-        this.type = type;
-        this.value = value;
-    }
-
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
     }
 
     public int getType() {
@@ -64,8 +43,7 @@ public class Tlv {
     @Override
     public String toString() {
         return "Tlv{" +
-                "id=" + id +
-                ", type=" + type +
+                "type=" + type +
                 ", length=" + getLength() +
                 ", value=" + Bytes.toHex(value) +
                 '}';
