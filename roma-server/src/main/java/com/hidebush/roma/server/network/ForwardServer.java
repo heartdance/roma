@@ -2,6 +2,7 @@ package com.hidebush.roma.server.network;
 
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
+import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.network.TlvDecoder;
@@ -43,18 +44,19 @@ public class ForwardServer extends TcpServer {
         return id;
     }
 
-    public void createVisitorServer(int port) {
-        this.visitorServer = new VisitorServer(port, this);
+    public void createVisitorServer(Protocol protocol, int port) {
+        this.visitorServer = new VisitorServer(protocol, port, this);
         reporter.info("visitorServer(" + visitorServer.id() + ") bind port " + port);
         this.visitorServer.startup();
     }
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
+        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(
+                32 * 1024 * 1024, 1, 4))
                 .addLast(new IdleStateHandler(300, 0, 0))
-                .addLast(new TlvEncoder(1, 2))
-                .addLast(new TlvDecoder(1, 2))
+                .addLast(new TlvEncoder(1, 4))
+                .addLast(new TlvDecoder(1, 4))
                 .addLast(new TlvHandler());
     }
 
@@ -95,7 +97,7 @@ public class ForwardServer extends TcpServer {
                 int visitorId = Bytes.toInt(value, 0, 4);
                 byte[] data = new byte[value.length - 4];
                 System.arraycopy(value, 4, data, 0, data.length);
-                reporter.debug("receive from forwardClient: service " + " send " +
+                reporter.debug("receive from forwardClient: service send " +
                         data.length + " bytes to visitor(" + visitorId + ")");
                 visitorServer.sendMsgToVisitor(visitorId, data);
             } else if (tlv.getType() == TypeConstant.ON_SERVICE_DISCONNECT) {

@@ -11,8 +11,11 @@ public class TypeConstant {
     public static final int SUCCESS = 2;
     public static final int FAILED = 3;
 
-    public static final int CREATE_PROXY = 4;
-    public static final int CANCEL_PROXY = 5;
+    public static final int CREATE_TCP_PROXY = 4;
+    public static final int CANCEL_TCP_PROXY = 5;
+
+    public static final int CREATE_UDP_PROXY = 6;
+    public static final int CANCEL_UDP_PROXY = 7;
 
     public static final int ON_VISITOR_CONNECT = 10;
     public static final int ON_VISITOR_SEND_MSG = 11;

@@ -1,11 +1,16 @@
 package com.hidebush.roma.server.network;
 
+import com.hidebush.roma.util.entity.Protocol;
+import com.hidebush.roma.util.network.NettyServer;
 import com.hidebush.roma.util.network.TcpServer;
+import com.hidebush.roma.util.network.UdpServer;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
+import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -15,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 连接服务访问者，将服务访问者的消息发送到 {@link ForwardServer}
  * Created by htf on 2021/8/6.
  */
-public class VisitorServer extends TcpServer {
+public class VisitorServer implements NettyServer {
 
     private static final AtomicInteger ids = new AtomicInteger();
 
@@ -27,8 +32,26 @@ public class VisitorServer extends TcpServer {
     private final ConcurrentMap<Integer, Channel> visitorChannel = new ConcurrentHashMap<>();
     private final AtomicInteger visitorId = new AtomicInteger();
 
-    public VisitorServer(int localPort, ForwardServer forwardServer) {
-        super(localPort);
+    private final NettyServer nettyServer;
+
+    public VisitorServer(Protocol protocol, int localPort, ForwardServer forwardServer) {
+        if (protocol == Protocol.TCP) {
+            nettyServer = new TcpServer(localPort) {
+                @Override
+                protected void initChannel(SocketChannel ch) {
+                    ch.pipeline().addLast(new VisitorHandler())
+                            .addLast(new ChannelOutboundHandlerAdapter());
+                }
+            };
+        } else {
+            nettyServer = new UdpServer(localPort) {
+                @Override
+                protected void initChannel(NioDatagramChannel ch) {
+                    ch.pipeline().addLast(new VisitorUdpHandler())
+                            .addLast(new ChannelOutboundHandlerAdapter());
+                }
+            };
+        }
         this.forwardServer = forwardServer;
         this.id = ids.incrementAndGet();
         this.reporter = ReporterFactory.createReporter("VisitorServer", id);
@@ -36,12 +59,6 @@ public class VisitorServer extends TcpServer {
 
     public int id() {
         return id;
-    }
-
-    @Override
-    protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new VisitorHandler())
-                .addLast(new ChannelOutboundHandlerAdapter());
     }
 
     public void sendMsgToVisitor(int visitorId, byte[] data) {
@@ -55,6 +72,21 @@ public class VisitorServer extends TcpServer {
     public void disconnectVisitor(int visitorId) {
         reporter.debug("disconnect visitor(" + visitorId + ")");
         visitorChannel.get(visitorId).close();
+    }
+
+    @Override
+    public int getLocalPort() {
+        return nettyServer.getLocalPort();
+    }
+
+    @Override
+    public Channel getChannel() {
+        return nettyServer.getChannel();
+    }
+
+    @Override
+    public void startup() {
+        nettyServer.startup();
     }
 
     private class VisitorHandler extends ChannelInboundHandlerAdapter {
@@ -87,6 +119,25 @@ public class VisitorServer extends TcpServer {
             forwardServer.sendDisconnectMsgToForwardClient(visitorId);
             Channel channel = visitorChannel.remove(visitorId);
             channel.close();
+        }
+    }
+
+    private class VisitorUdpHandler extends ChannelInboundHandlerAdapter {
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            DatagramPacket in = (DatagramPacket) msg;
+            Integer visitorId = visitorChannelId.computeIfAbsent(ctx.channel().id(), k -> {
+                int id = VisitorServer.this.visitorId.incrementAndGet();
+                visitorChannel.put(id, ctx.channel());
+                forwardServer.sendConnectMsgToForwardClient(id);
+                return id;
+            });
+            ByteBuf content = in.content();
+            byte[] bytes = new byte[content.readableBytes()];
+            content.readBytes(bytes);
+            reporter.debug("receive from visitor(" + visitorId + ") " + bytes.length + " bytes");
+            forwardServer.sendMsgToForwardClient(visitorId, bytes);
         }
     }
 

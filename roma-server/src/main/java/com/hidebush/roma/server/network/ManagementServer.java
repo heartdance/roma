@@ -3,13 +3,13 @@ package com.hidebush.roma.server.network;
 import com.hidebush.roma.server.entity.ClientInfo;
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
+import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -55,11 +55,11 @@ public class ManagementServer extends TcpServer {
                 .addLast(new TlvHandler());
     }
 
-    private ForwardServer createForwardServer(ChannelId clientId, int visitorServerPort) {
+    private ForwardServer createForwardServer(ChannelId clientId, Protocol protocol, int visitorServerPort) {
         ForwardServer forwardServer = new ForwardServer();
         forwardServer.startup();
         reporter.info("forwardServer(" + forwardServer.id() + ") bind port " + forwardServer.getLocalPort());
-        forwardServer.createVisitorServer(visitorServerPort);
+        forwardServer.createVisitorServer(protocol, visitorServerPort);
         clientForwardServers.get(clientId).getForwardServers().add(forwardServer);
         return forwardServer;
     }
@@ -78,10 +78,11 @@ public class ManagementServer extends TcpServer {
                 reporter.debug("receive from managementClient: ping");
                 reporter.debug("send to managementClient: pong");
                 ctx.writeAndFlush(new Tlv(TypeConstant.PONG));
-            } else if (tlv.getType() == TypeConstant.CREATE_PROXY) {
+            } else if (tlv.getType() == TypeConstant.CREATE_TCP_PROXY || tlv.getType() == TypeConstant.CREATE_UDP_PROXY) {
                 int port = Bytes.toInt(tlv.getValue(), 4, 2);
                 reporter.info("create proxy on port " + port);
-                ForwardServer forwardServer = createForwardServer(ctx.channel().id(), port);
+                ForwardServer forwardServer = createForwardServer(ctx.channel().id(),
+                        tlv.getType() == TypeConstant.CREATE_TCP_PROXY ? Protocol.TCP : Protocol.UDP, port);
                 reporter.debug("send to managementClient: proxy on port " + port + " created");
                 byte[] bytes = new byte[6];
                 System.arraycopy(tlv.getValue(), 0, bytes, 0, 4);

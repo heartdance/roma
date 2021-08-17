@@ -1,40 +1,40 @@
 package com.hidebush.roma.util.network;
 
-import io.netty.bootstrap.ServerBootstrap;
+import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 
 import java.net.InetSocketAddress;
 
 /**
- * Created by htf on 2021/8/5.
+ * Created by htf on 2021/8/16.
  */
-public abstract class TcpServer implements NettyServer {
+public abstract class UdpServer implements NettyServer {
 
     private int localPort;
     private Channel channel;
 
-    public TcpServer(int localPort) {
+    public UdpServer(int localPort) {
         this.localPort = localPort;
     }
 
     @Override
     public void startup() {
-        ServerBootstrap b = new ServerBootstrap();
+        Bootstrap b = new Bootstrap();
         EventLoopGroup group = new NioEventLoopGroup(1);
 
         b.group(group)
-                .channel(NioServerSocketChannel.class)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
+                .channel(NioDatagramChannel.class)
+                .option(ChannelOption.SO_BROADCAST, true)
+                .option(ChannelOption.SO_RCVBUF, 1024 * 1024)
+                .option(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                .handler(new ChannelInitializer<NioDatagramChannel>() {
                     @Override
-                    public void initChannel(SocketChannel ch) {
-                        TcpServer.this.initChannel(ch);
+                    public void initChannel(NioDatagramChannel ch) {
+                        UdpServer.this.initChannel(ch);
                     }
-                })
-                .option(ChannelOption.SO_BACKLOG, 128)
-                .childOption(ChannelOption.SO_KEEPALIVE, Boolean.TRUE);
+                });
         try {
             ChannelFuture future = b.bind(localPort).sync();
             if (future.isSuccess()) {
@@ -46,7 +46,7 @@ public abstract class TcpServer implements NettyServer {
         }
     }
 
-    protected abstract void initChannel(SocketChannel ch);
+    protected abstract void initChannel(NioDatagramChannel ch);
 
     @Override
     public int getLocalPort() {

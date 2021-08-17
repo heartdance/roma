@@ -3,19 +3,18 @@ package com.hidebush.roma.util.network;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 
 /**
- * Created by htf on 2021/8/6.
+ * Created by htf on 2021/8/16.
  */
-public abstract class TcpClient implements NettyClient {
+public abstract class UdpClient implements NettyClient {
 
     private final String host;
     private final int port;
     private Channel channel;
 
-    public TcpClient(String host, int port) {
+    public UdpClient(String host, int port) {
         this.host = host;
         this.port = port;
     }
@@ -25,11 +24,14 @@ public abstract class TcpClient implements NettyClient {
         Bootstrap b = new Bootstrap();
         EventLoopGroup group = new NioEventLoopGroup(1);
         b.group(group)
-                .channel(NioSocketChannel.class)
-                .handler(new ChannelInitializer<SocketChannel>() {
+                .channel(NioDatagramChannel.class)
+                .option(ChannelOption.SO_BROADCAST, true)
+                .option(ChannelOption.SO_RCVBUF, 1024 * 1024)
+                .option(ChannelOption.SO_SNDBUF, 1024 * 1024)
+                .handler(new ChannelInitializer<NioDatagramChannel>() {
                     @Override
-                    public void initChannel(SocketChannel ch) {
-                        TcpClient.this.initChannel(ch);
+                    public void initChannel(NioDatagramChannel ch) {
+                        UdpClient.this.initChannel(ch);
                     }
                 });
         try {
@@ -41,7 +43,7 @@ public abstract class TcpClient implements NettyClient {
         }
     }
 
-    protected abstract void initChannel(SocketChannel ch);
+    protected abstract void initChannel(NioDatagramChannel ch);
 
     @Override
     public String getHost() {

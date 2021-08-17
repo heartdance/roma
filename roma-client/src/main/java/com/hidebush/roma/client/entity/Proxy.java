@@ -1,9 +1,13 @@
 package com.hidebush.roma.client.entity;
 
+import com.hidebush.roma.util.entity.Protocol;
+
 /**
  * Created by htf on 2021/8/12.
  */
 public class Proxy {
+
+    private final Protocol protocol;
 
     private final Integer port;
 
@@ -11,16 +15,21 @@ public class Proxy {
 
     private final Integer servicePort;
 
-    public Proxy(Integer port, String serviceHost, Integer servicePort) {
-        if (port == null || serviceHost == null || servicePort == null) {
+    public Proxy(Protocol protocol, Integer port, String serviceHost, Integer servicePort) {
+        if (protocol == null || port == null || serviceHost == null || servicePort == null) {
             throw new NullPointerException();
         }
         if (serviceHost.isEmpty()) {
             throw new IllegalArgumentException();
         }
+        this.protocol = protocol;
         this.port = port;
         this.serviceHost = serviceHost;
         this.servicePort = servicePort;
+    }
+
+    public Protocol getProtocol() {
+        return protocol;
     }
 
     public Integer getPort() {
@@ -33,5 +42,9 @@ public class Proxy {
 
     public Integer getServicePort() {
         return servicePort;
+    }
+
+    public String toString() {
+        return protocol + " - " + port + " - " + serviceHost + ":" + servicePort;
     }
 }

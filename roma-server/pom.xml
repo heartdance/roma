@@ -40,7 +40,7 @@
                     <archive>
                         <manifest>
                             <!-- 此处指定main方法入口的class -->
-                            <mainClass>com.hidebush.roma.server.RomaServer</mainClass>
+                            <mainClass>com.hidebush.roma.server.Roma</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

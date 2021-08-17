@@ -2,6 +2,7 @@ package com.hidebush.roma.client.network;
 
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
+import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.network.TcpClient;
 import com.hidebush.roma.util.network.TlvDecoder;
@@ -31,13 +32,15 @@ public class ForwardClient extends TcpClient {
     private final int id;
     private final Reporter reporter;
 
+    private final Protocol protocol;
     private final String serviceHost;
     private final int servicePort;
 
     private final ConcurrentMap<Integer, ServiceClient> serviceClientMap = new ConcurrentHashMap<>();
 
-    public ForwardClient(String host, int port, String serviceHost, int servicePort) {
+    public ForwardClient(String host, int port, Protocol protocol, String serviceHost, int servicePort) {
         super(host, port);
+        this.protocol = protocol;
         this.serviceHost = serviceHost;
         this.servicePort = servicePort;
         this.id = ids.incrementAndGet();
@@ -50,15 +53,16 @@ public class ForwardClient extends TcpClient {
 
     @Override
     protected void initChannel(SocketChannel ch) {
-        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
-                .addLast(new IdleStateHandler(300, 10, 0))
-                .addLast(new TlvEncoder(1, 2))
-                .addLast(new TlvDecoder(1, 2))
+        ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(
+                32 * 1024 * 1024, 1, 4))
+                .addLast(new IdleStateHandler(300, 30, 0))
+                .addLast(new TlvEncoder(1, 4))
+                .addLast(new TlvDecoder(1, 4))
                 .addLast(new TlvHandler());
     }
 
     private void createServiceClient(int visitorId) {
-        ServiceClient serviceClient = new ServiceClient(visitorId, serviceHost, servicePort, this);
+        ServiceClient serviceClient = new ServiceClient(visitorId, protocol, serviceHost, servicePort, this);
         serviceClientMap.put(visitorId, serviceClient);
         serviceClient.startup();
         reporter.debug("serviceClient(" + serviceClient.id() + ") connect to " + serviceHost + ":" + servicePort);

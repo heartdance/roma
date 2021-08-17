@@ -6,6 +6,7 @@ import com.hidebush.roma.client.network.ManagementClient;
 import com.hidebush.roma.util.config.CommandLine;
 import com.hidebush.roma.util.config.RomaConfig;
 import com.hidebush.roma.util.config.StringList;
+import com.hidebush.roma.util.entity.Protocol;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,19 +28,26 @@ public class RomaClient {
                 ClientOption.TCP_PROXY, ClientOption.UDP_PROXY);
         RomaClient romaClient = new RomaClient(commandLine.parse(args));
         romaClient.startup();
-        List<Proxy> proxies = proxies(romaClient.config.get(ClientOption.TCP_PROXY));
+
+        List<Proxy> proxies = proxies(romaClient.config.get(ClientOption.TCP_PROXY), Protocol.TCP);
         for (Proxy proxy : proxies) {
-            romaClient.createProxy(proxy);
+            romaClient.getManagementClient().createProxy(proxy);
+        }
+
+        proxies = proxies(romaClient.config.get(ClientOption.UDP_PROXY), Protocol.UDP);
+        for (Proxy proxy : proxies) {
+            romaClient.getManagementClient().createProxy(proxy);
         }
     }
 
-    private static List<Proxy> proxies(StringList proxiesConfig) {
+    private static List<Proxy> proxies(StringList proxiesConfig, Protocol type) {
         List<Proxy> proxies = new ArrayList<>(proxiesConfig.size());
         for (String proxyConfig : proxiesConfig) {
             try {
                 String[] split = proxyConfig.split("/");
                 String[] serviceConfig = split[1].split(":");
-                proxies.add(new Proxy(Integer.parseInt(split[0]), serviceConfig[0], Integer.parseInt(serviceConfig[1])));
+                proxies.add(new Proxy(type, Integer.parseInt(split[0]),
+                        serviceConfig[0], Integer.parseInt(serviceConfig[1])));
             } catch (Exception e) {
                 throw new IllegalArgumentException("proxy '" + proxyConfig + "'");
             }
@@ -52,7 +60,7 @@ public class RomaClient {
         managementClient.startup();
     }
 
-    public void createProxy(Proxy proxy) {
-        managementClient.createProxy(proxy.getPort(), proxy.getServiceHost(), proxy.getServicePort());
+    public ManagementClient getManagementClient() {
+        return managementClient;
     }
 }

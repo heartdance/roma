@@ -1,8 +1,10 @@
 package com.hidebush.roma.client.network;
 
+import com.hidebush.roma.client.entity.Proxy;
 import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.SocketFuture;
+import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
 import com.hidebush.roma.util.exception.RomaException;
 import com.hidebush.roma.util.network.TcpClient;
@@ -50,20 +52,21 @@ public class ManagementClient extends TcpClient {
     @Override
     protected void initChannel(SocketChannel ch) {
         ch.pipeline().addLast(new LengthFieldBasedFrameDecoder(1024, 1, 2))
-                .addLast(new IdleStateHandler(300, 10, 0))
+                .addLast(new IdleStateHandler(300, 30, 0))
                 .addLast(new TlvEncoder(1, 2))
                 .addLast(new TlvDecoder(1, 2))
                 .addLast(new TlvHandler());
     }
 
-    private Tlv sendCreateProxyMsgAndGetResponse(int proxyPort) {
+    private Tlv sendCreateProxyMsgAndGetResponse(Protocol type, int proxyPort) {
         int id = requestId.incrementAndGet();
         SocketFuture<Tlv> future = new SocketFuture<>();
         requestFuture.put(id, future);
         byte[] bytes = new byte[6];
         System.arraycopy(Bytes.toBytes(id, 4), 0, bytes, 0, 4);
         System.arraycopy(Bytes.toBytes(proxyPort, 2), 0, bytes, 4, 2);
-        getChannel().writeAndFlush(new Tlv(TypeConstant.CREATE_PROXY, bytes));
+        getChannel().writeAndFlush(new Tlv(
+                type == Protocol.TCP ? TypeConstant.CREATE_TCP_PROXY : TypeConstant.CREATE_UDP_PROXY, bytes));
         try {
             return future.get();
         } catch (InterruptedException e) {
@@ -71,23 +74,21 @@ public class ManagementClient extends TcpClient {
         }
     }
 
-    private void createForwardClient(String host, int port, String serviceHost, int servicePort) {
-        ForwardClient forwardClient = new ForwardClient(host, port, serviceHost, servicePort);
+    private void createForwardClient(String host, int port, Protocol protocol, String serviceHost, int servicePort) {
+        ForwardClient forwardClient = new ForwardClient(host, port, protocol, serviceHost, servicePort);
         forwardClient.startup();
         reporter.info("forwardClient(" + forwardClient.id() + ") connect to " + host + ":" + port +
-                " and forward with " + serviceHost + ":" + servicePort);
+                " and forward with " + protocol + " - " + serviceHost + ":" + servicePort);
     }
 
-    public void createProxy(int port, String serviceHost, int servicePort) {
-        reporter.debug("send to managementServer: create proxy " + getHost() + ":" + port +
-                " for " + serviceHost + ":" + servicePort);
-        Tlv tlv = sendCreateProxyMsgAndGetResponse(port);
+    public void createProxy(Proxy proxy) {
+        reporter.debug("send to managementServer: create proxy " + proxy);
+        Tlv tlv = sendCreateProxyMsgAndGetResponse(proxy.getProtocol(), proxy.getPort());
         if (tlv == null || tlv.getType() != TypeConstant.SUCCESS) {
-            throw new RomaException("create proxy " + getHost() + ":" + port +
-                    " for " + serviceHost + ":" + servicePort + " failed");
+            throw new RomaException("create proxy " + proxy + " failed");
         }
         int forwardPort = Bytes.toInt(tlv.getValue(), 4, 2);
-        createForwardClient(getHost(), forwardPort, serviceHost, servicePort);
+        createForwardClient(getHost(), forwardPort, proxy.getProtocol(), proxy.getServiceHost(), proxy.getServicePort());
     }
 
     private class TlvHandler extends ChannelInboundHandlerAdapter {
