@@ -1,6 +1,5 @@
 package com.hidebush.roma.server.network;
 
-import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
@@ -9,6 +8,8 @@ import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -21,7 +22,10 @@ import io.netty.handler.timeout.IdleStateHandler;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 连接客户端，将客户端消息发送到 {@link VisitorServer}
+ * 转发服务端，用于接受转发客户端的连接
+ * 1.创建和管理 {@link VisitorServer}
+ * 2.转发客户端消息到 {@link VisitorServer}
+ * 3.提供转发消息到转发客户端的接口
  * Created by htf on 2021/8/6.
  */
 public class ForwardServer extends TcpServer {
@@ -62,19 +66,19 @@ public class ForwardServer extends TcpServer {
 
     public void sendConnectMsgToForwardClient(int visitorId) {
         reporter.debug("send to forwardClient: visitor(" + visitorId + ") connect");
-        Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_CONNECT, Bytes.toBytes(visitorId, 4));
+        Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_CONNECT, Unpooled.copyInt(visitorId));
         forwardClientChannel.writeAndFlush(tlv);
     }
 
-    public void sendMsgToForwardClient(int visitorId, byte[] data) {
-        reporter.debug("send to forwardClient " + data.length + " bytes from visitor(" + visitorId + ")");
-        Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_SEND_MSG, Bytes.merge(Bytes.toBytes(visitorId, 4), data));
+    public void sendMsgToForwardClient(int visitorId, ByteBuf data) {
+        reporter.debug("send to forwardClient " + data.readableBytes() + " bytes from visitor(" + visitorId + ")");
+        Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_SEND_MSG, Unpooled.wrappedBuffer(Unpooled.copyInt(visitorId), data));
         forwardClientChannel.writeAndFlush(tlv);
     }
 
     public void sendDisconnectMsgToForwardClient(int visitorId) {
         reporter.debug("send to forwardClient: visitor(" + visitorId + ") disconnect");
-        Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_DISCONNECT, Bytes.toBytes(visitorId, 4));
+        Tlv tlv = new Tlv(TypeConstant.ON_VISITOR_DISCONNECT, Unpooled.copyInt(visitorId));
         forwardClientChannel.writeAndFlush(tlv);
     }
 
@@ -93,17 +97,14 @@ public class ForwardServer extends TcpServer {
                 reporter.debug("send to forwardClient: pong");
                 ctx.writeAndFlush(new Tlv(TypeConstant.PONG));
             } else if (tlv.getType() == TypeConstant.ON_SERVICE_SEND_MSG) {
-                byte[] value = tlv.getValue();
-                int visitorId = Bytes.toInt(value, 0, 4);
-                byte[] data = new byte[value.length - 4];
-                System.arraycopy(value, 4, data, 0, data.length);
+                int visitorId = tlv.getValue().readInt();
                 reporter.debug("receive from forwardClient: service send " +
-                        data.length + " bytes to visitor(" + visitorId + ")");
-                visitorServer.sendMsgToVisitor(visitorId, data);
+                        tlv.getValue().readableBytes() + " bytes to visitor(" + visitorId + ")");
+                visitorServer.sendMsgToVisitor(visitorId, tlv.getValue().retain());
             } else if (tlv.getType() == TypeConstant.ON_SERVICE_DISCONNECT) {
-                byte[] value = tlv.getValue();
-                int visitorId = Bytes.toInt(value);
-                reporter.debug("receive from forwardClient: service " + " disconnect to visitor(" + visitorId + ")");
+                int visitorId = tlv.getValue().readInt();
+                reporter.debug("receive from forwardClient: service " +
+                        " disconnect to visitor(" + visitorId + ")");
                 visitorServer.disconnectVisitor(visitorId);
             }
         }

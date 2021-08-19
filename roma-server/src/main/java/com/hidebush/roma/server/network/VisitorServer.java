@@ -11,13 +11,16 @@ import io.netty.channel.*;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
+import io.netty.util.ReferenceCountUtil;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 连接服务访问者，将服务访问者的消息发送到 {@link ForwardServer}
+ * 访问者服务端，用于接受访问者的连接
+ * 1.将访问者发来的消息发送到 {@link ForwardServer}
+ * 2.提供发送消息到访问者的接口
  * Created by htf on 2021/8/6.
  */
 public class VisitorServer implements NettyServer {
@@ -61,12 +64,10 @@ public class VisitorServer implements NettyServer {
         return id;
     }
 
-    public void sendMsgToVisitor(int visitorId, byte[] data) {
-        reporter.debug("send to visitor(" + visitorId + ") " + data.length + " bytes");
+    public void sendMsgToVisitor(int visitorId, ByteBuf data) {
+        reporter.debug("send to visitor(" + visitorId + ") " + data.readableBytes() + " bytes");
         Channel channel = visitorChannel.get(visitorId);
-        ByteBuf out = channel.alloc().ioBuffer(data.length);
-        out.writeBytes(data);
-        channel.writeAndFlush(out);
+        channel.writeAndFlush(data);
     }
 
     public void disconnectVisitor(int visitorId) {
@@ -102,13 +103,15 @@ public class VisitorServer implements NettyServer {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ByteBuf in = (ByteBuf) msg;
-            if (in.isReadable()) {
-                Integer visitorId = visitorChannelId.get(ctx.channel().id());
-                byte[] bytes = new byte[in.readableBytes()];
-                in.readBytes(bytes);
-                reporter.debug("receive from visitor(" + visitorId + ") " + bytes.length + " bytes");
-                forwardServer.sendMsgToForwardClient(visitorId, bytes);
+            try {
+                ByteBuf in = (ByteBuf) msg;
+                if (in.isReadable()) {
+                    Integer visitorId = visitorChannelId.get(ctx.channel().id());
+                    reporter.debug("receive from visitor(" + visitorId + ") " + in.readableBytes() + " bytes");
+                    forwardServer.sendMsgToForwardClient(visitorId, in.retain());
+                }
+            } finally {
+                ReferenceCountUtil.release(msg);
             }
         }
 
@@ -126,18 +129,20 @@ public class VisitorServer implements NettyServer {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            DatagramPacket in = (DatagramPacket) msg;
-            Integer visitorId = visitorChannelId.computeIfAbsent(ctx.channel().id(), k -> {
-                int id = VisitorServer.this.visitorId.incrementAndGet();
-                visitorChannel.put(id, ctx.channel());
-                forwardServer.sendConnectMsgToForwardClient(id);
-                return id;
-            });
-            ByteBuf content = in.content();
-            byte[] bytes = new byte[content.readableBytes()];
-            content.readBytes(bytes);
-            reporter.debug("receive from visitor(" + visitorId + ") " + bytes.length + " bytes");
-            forwardServer.sendMsgToForwardClient(visitorId, bytes);
+            try {
+                DatagramPacket in = (DatagramPacket) msg;
+                Integer visitorId = visitorChannelId.computeIfAbsent(ctx.channel().id(), k -> {
+                    int id = VisitorServer.this.visitorId.incrementAndGet();
+                    visitorChannel.put(id, ctx.channel());
+                    forwardServer.sendConnectMsgToForwardClient(id);
+                    return id;
+                });
+                ByteBuf content = in.content();
+                reporter.debug("receive from visitor(" + visitorId + ") " + content.readableBytes() + " bytes");
+                forwardServer.sendMsgToForwardClient(visitorId, content.retain());
+            } finally {
+                ReferenceCountUtil.release(msg);
+            }
         }
     }
 

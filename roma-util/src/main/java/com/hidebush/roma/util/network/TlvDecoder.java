@@ -20,17 +20,25 @@ public class TlvDecoder extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
-        ByteBuf in = (ByteBuf) msg;
-        int type = readInt(in, typeFieldLength);
-        int length = readInt(in, lengthFieldLength);
-        if (length < 0) {
-            throw new IllegalArgumentException();
+        if (msg instanceof ByteBuf) {
+            ByteBuf in = (ByteBuf) msg;
+            try {
+                int type = readInt(in, typeFieldLength);
+                int length = readInt(in, lengthFieldLength);
+                if (length < 0) {
+                    throw new IllegalArgumentException();
+                }
+                if (length > 0) {
+                    ctx.fireChannelRead(new Tlv(type, in));
+                } else {
+                    ctx.fireChannelRead(new Tlv(type));
+                }
+            } finally {
+                in.release();
+            }
+        } else {
+            ctx.fireChannelRead(msg);
         }
-        byte[] bytes = new byte[length];
-        if (length > 0) {
-            in.readBytes(bytes);
-        }
-        ctx.fireChannelRead(new Tlv(type, bytes));
     }
     
     private int readInt(ByteBuf in, int length) {

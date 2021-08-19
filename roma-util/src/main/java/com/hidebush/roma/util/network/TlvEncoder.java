@@ -23,15 +23,17 @@ public class TlvEncoder extends ChannelOutboundHandlerAdapter {
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
         if (msg instanceof Tlv) {
             Tlv tlv = (Tlv) msg;
-            ByteBuf out = ctx.alloc().ioBuffer(typeFieldLength + lengthFieldLength + tlv.getValue().length);
+            ByteBuf out = ctx.alloc().ioBuffer(typeFieldLength + lengthFieldLength);
             writeInt(out, tlv.getType(), typeFieldLength);
             writeInt(out, tlv.getLength(), lengthFieldLength);
-            if (tlv.getValue() != null && tlv.getValue().length > 0) {
-                out.writeBytes(tlv.getValue());
+            if (tlv.getValue() == null) {
+                ctx.writeAndFlush(out, promise);
+            } else {
+                ctx.write(out);
+                ctx.writeAndFlush(tlv.getValue(), promise);
             }
-            ctx.write(out, promise);
         } else {
-            ctx.write(msg, promise);
+            ctx.writeAndFlush(msg, promise);
         }
     }
 

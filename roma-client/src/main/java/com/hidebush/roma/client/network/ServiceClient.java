@@ -14,11 +14,14 @@ import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
+import io.netty.util.ReferenceCountUtil;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 连接服务，将服务发出的消息发送到 {@link ForwardClient}
+ * 服务客户端，用于连接服务
+ * 1.将服务发来的消息发送到 {@link ForwardClient}
+ * 2.提供发送消息到服务的接口
  * Created by htf on 2021/8/6.
  */
 public class ServiceClient implements NettyClient {
@@ -61,11 +64,9 @@ public class ServiceClient implements NettyClient {
         return id;
     }
 
-    public void sendMsgToService(byte[] data) {
-        reporter.debug("send to service " + data.length + " bytes");
-        ByteBuf out = getChannel().alloc().ioBuffer(data.length);
-        out.writeBytes(data);
-        getChannel().writeAndFlush(out);
+    public void sendMsgToService(ByteBuf data) {
+        reporter.debug("send to service " + data.readableBytes() + " bytes");
+        getChannel().writeAndFlush(data);
     }
 
     @Override
@@ -91,12 +92,14 @@ public class ServiceClient implements NettyClient {
     private class ServiceHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ByteBuf in = (ByteBuf) msg;
-            if (in.isReadable()) {
-                byte[] bytes = new byte[in.readableBytes()];
-                reporter.debug("receive from service " + bytes.length + " bytes");
-                in.readBytes(bytes);
-                forwardClient.sendMsgToForwardServer(visitorId, bytes);
+            try {
+                ByteBuf in = (ByteBuf) msg;
+                if (in.isReadable()) {
+                    reporter.debug("receive from service " + in.readableBytes() + " bytes");
+                    forwardClient.sendMsgToForwardServer(visitorId, in.retain());
+                }
+            } finally {
+                ReferenceCountUtil.release(msg);
             }
         }
 
@@ -110,12 +113,14 @@ public class ServiceClient implements NettyClient {
     private class ServiceUdpHandler extends ChannelInboundHandlerAdapter {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            DatagramPacket in = (DatagramPacket) msg;
-            ByteBuf content = in.content();
-            byte[] bytes = new byte[content.readableBytes()];
-            reporter.debug("receive from service " + bytes.length + " bytes");
-            content.readBytes(bytes);
-            forwardClient.sendMsgToForwardServer(visitorId, bytes);
+            try {
+                DatagramPacket in = (DatagramPacket) msg;
+                ByteBuf content = in.content();
+                reporter.debug("receive from service " + content.readableBytes() + " bytes");
+                forwardClient.sendMsgToForwardServer(visitorId, content.retain());
+            } finally {
+                ReferenceCountUtil.release(msg);
+            }
         }
 
         @Override

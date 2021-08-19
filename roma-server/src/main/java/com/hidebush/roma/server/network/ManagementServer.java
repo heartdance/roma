@@ -1,7 +1,6 @@
 package com.hidebush.roma.server.network;
 
 import com.hidebush.roma.server.entity.ClientInfo;
-import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
@@ -10,6 +9,7 @@ import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
+ * 管理服务端，用于接受管理客户端的连接
  * 管理所有代理
  * Created by htf on 2021/8/5.
  */
@@ -78,17 +79,18 @@ public class ManagementServer extends TcpServer {
                 reporter.debug("receive from managementClient: ping");
                 reporter.debug("send to managementClient: pong");
                 ctx.writeAndFlush(new Tlv(TypeConstant.PONG));
-            } else if (tlv.getType() == TypeConstant.CREATE_TCP_PROXY || tlv.getType() == TypeConstant.CREATE_UDP_PROXY) {
-                int port = Bytes.toInt(tlv.getValue(), 4, 2);
-                reporter.info("create proxy on port " + port);
-                ForwardServer forwardServer = createForwardServer(ctx.channel().id(),
-                        tlv.getType() == TypeConstant.CREATE_TCP_PROXY ? Protocol.TCP : Protocol.UDP, port);
-                reporter.debug("send to managementClient: proxy on port " + port + " created");
-                byte[] bytes = new byte[6];
-                System.arraycopy(tlv.getValue(), 0, bytes, 0, 4);
-                System.arraycopy(Bytes.toBytes(forwardServer.getLocalPort(), 2), 0,
-                        bytes, 4, 2);
-                ctx.writeAndFlush(new Tlv(TypeConstant.SUCCESS, bytes));
+            } else if (tlv.getType() == TypeConstant.CREATE_TCP_PROXY ||
+                    tlv.getType() == TypeConstant.CREATE_UDP_PROXY) {
+                Protocol protocol = tlv.getType() == TypeConstant.CREATE_TCP_PROXY ? Protocol.TCP : Protocol.UDP;
+                int msgId = tlv.getValue().readInt();
+                int port = tlv.getValue().readUnsignedShort();
+                reporter.info("create " + protocol + " proxy on port " + port);
+                ForwardServer forwardServer = createForwardServer(ctx.channel().id(), protocol, port);
+                reporter.debug("send to managementClient: " + protocol + " proxy on port " + port + " created");
+                ByteBuf out = ctx.alloc().ioBuffer(6)
+                        .writeInt(msgId)
+                        .writeShort(forwardServer.getLocalPort());
+                ctx.writeAndFlush(new Tlv(TypeConstant.SUCCESS, out));
             }
         }
 

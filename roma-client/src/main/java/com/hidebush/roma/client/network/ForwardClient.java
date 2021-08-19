@@ -1,6 +1,5 @@
 package com.hidebush.roma.client.network;
 
-import com.hidebush.roma.util.Bytes;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
@@ -9,6 +8,8 @@ import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
@@ -22,7 +23,10 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 连接服务端，转发服务端消息到 {@link ServiceClient}
+ * 转发客户端，用于连接转发服务端
+ * 1.创建和管理 {@link ServiceClient}
+ * 2.转发服务端消息到 {@link ServiceClient}
+ * 3.提供转发消息到转发服务端的接口
  * Created by htf on 2021/8/6.
  */
 public class ForwardClient extends TcpClient {
@@ -68,20 +72,20 @@ public class ForwardClient extends TcpClient {
         reporter.debug("serviceClient(" + serviceClient.id() + ") connect to " + serviceHost + ":" + servicePort);
     }
 
-    public void sendMsgToForwardServer(int visitorId, byte[] data) {
+    public void sendMsgToForwardServer(int visitorId, ByteBuf data) {
         ServiceClient serviceClient = serviceClientMap.get(visitorId);
         reporter.debug("send to forwardServer: serviceClient(" + serviceClient.id() +
-                ") send " + data.length + " bytes to visitor(" + visitorId + ")");
-        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_SEND_MSG,
-                Bytes.merge(Bytes.toBytes(visitorId, 4), data));
+                ") send " + data.readableBytes() + " bytes to visitor(" + visitorId + ")");
+        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_SEND_MSG, Unpooled.wrappedBuffer(Unpooled.copyInt(visitorId), data));
         getChannel().writeAndFlush(tlv);
     }
 
     public void sendDisconnectMsgToForwardServer(int visitorId) {
         ServiceClient serviceClient = serviceClientMap.remove(visitorId);
-        reporter.debug("send to forwardServer: serviceClient(" + (serviceClient == null ? null : serviceClient.id()) +
+        Integer serviceClientId = serviceClient == null ? null : serviceClient.id();
+        reporter.debug("send to forwardServer: serviceClient(" + serviceClientId +
                 ") disconnect to visitor(" + visitorId + ")");
-        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_DISCONNECT, Bytes.toBytes(visitorId, 4));
+        Tlv tlv = new Tlv(TypeConstant.ON_SERVICE_DISCONNECT, Unpooled.copyInt(visitorId));
         getChannel().writeAndFlush(tlv);
     }
 
@@ -92,23 +96,19 @@ public class ForwardClient extends TcpClient {
             if (tlv.getType() == TypeConstant.PONG) {
                 reporter.debug("receive from forwardServer: pong");
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_CONNECT) {
-                int visitorId = Bytes.toInt(tlv.getValue());
+                int visitorId = tlv.getValue().readInt();
                 reporter.debug("receive from forwardServer: visitor(" + visitorId + ") connect");
                 createServiceClient(visitorId);
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_SEND_MSG) {
-                byte[] value = tlv.getValue();
-                int visitorId = Bytes.toInt(value, 0, 4);
+                int visitorId = tlv.getValue().readInt();
                 ServiceClient serviceClient = serviceClientMap.get(visitorId);
                 if (serviceClient != null) {
-                    byte[] bytes = new byte[value.length - 4];
-                    System.arraycopy(value, 4, bytes, 0, bytes.length);
                     reporter.debug("receive from forwardServer: visitor(" + visitorId +
-                            ") send " + bytes.length + " bytes");
-                    serviceClient.sendMsgToService(bytes);
+                            ") send " + tlv.getValue().readableBytes() + " bytes");
+                    serviceClient.sendMsgToService(tlv.getValue().retain());
                 }
             } else if (tlv.getType() == TypeConstant.ON_VISITOR_DISCONNECT) {
-                byte[] value = tlv.getValue();
-                int visitorId = Bytes.toInt(value);
+                int visitorId = tlv.getValue().readInt();
                 reporter.debug("receive from forwardServer: visitor(" + visitorId + ") disconnect");
                 ServiceClient serviceClient = serviceClientMap.remove(visitorId);
                 reporter.debug("disconnect serviceClient(" +

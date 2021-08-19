@@ -1,7 +1,7 @@
 package com.hidebush.roma.client.network;
 
 import com.hidebush.roma.client.entity.Proxy;
-import com.hidebush.roma.util.Bytes;
+import com.hidebush.roma.client.entity.ProxyResult;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.SocketFuture;
 import com.hidebush.roma.util.entity.Protocol;
@@ -12,6 +12,7 @@ import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
 import com.hidebush.roma.util.reporter.Reporter;
 import com.hidebush.roma.util.reporter.ReporterFactory;
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.SocketChannel;
@@ -25,7 +26,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 管理本地代理
+ * 管理客户端，用于连接管理服务端
+ * 创建和管理本地代理
  * Created by htf on 2021/8/6.
  */
 public class ManagementClient extends TcpClient {
@@ -37,7 +39,7 @@ public class ManagementClient extends TcpClient {
 
     private final AtomicInteger requestId = new AtomicInteger();
 
-    private final ConcurrentMap<Integer, SocketFuture<Tlv>> requestFuture = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Integer, SocketFuture<ProxyResult>> requestFuture = new ConcurrentHashMap<>();
 
     public ManagementClient(String host, int port) {
         super(host, port);
@@ -58,15 +60,14 @@ public class ManagementClient extends TcpClient {
                 .addLast(new TlvHandler());
     }
 
-    private Tlv sendCreateProxyMsgAndGetResponse(Protocol type, int proxyPort) {
+    private ProxyResult sendCreateProxyMsgAndGetResponse(Protocol protocol, int proxyPort) {
         int id = requestId.incrementAndGet();
-        SocketFuture<Tlv> future = new SocketFuture<>();
+        SocketFuture<ProxyResult> future = new SocketFuture<>();
         requestFuture.put(id, future);
-        byte[] bytes = new byte[6];
-        System.arraycopy(Bytes.toBytes(id, 4), 0, bytes, 0, 4);
-        System.arraycopy(Bytes.toBytes(proxyPort, 2), 0, bytes, 4, 2);
-        getChannel().writeAndFlush(new Tlv(
-                type == Protocol.TCP ? TypeConstant.CREATE_TCP_PROXY : TypeConstant.CREATE_UDP_PROXY, bytes));
+        ByteBuf out = getChannel().alloc().ioBuffer(6);
+        out.writeInt(id).writeShort(proxyPort);
+        int type = protocol == Protocol.TCP ? TypeConstant.CREATE_TCP_PROXY : TypeConstant.CREATE_UDP_PROXY;
+        getChannel().writeAndFlush(new Tlv(type, out));
         try {
             return future.get();
         } catch (InterruptedException e) {
@@ -83,12 +84,12 @@ public class ManagementClient extends TcpClient {
 
     public void createProxy(Proxy proxy) {
         reporter.debug("send to managementServer: create proxy " + proxy);
-        Tlv tlv = sendCreateProxyMsgAndGetResponse(proxy.getProtocol(), proxy.getPort());
-        if (tlv == null || tlv.getType() != TypeConstant.SUCCESS) {
+        ProxyResult proxyResult = sendCreateProxyMsgAndGetResponse(proxy.getProtocol(), proxy.getPort());
+        if (proxyResult == null || proxyResult.getType() != TypeConstant.SUCCESS) {
             throw new RomaException("create proxy " + proxy + " failed");
         }
-        int forwardPort = Bytes.toInt(tlv.getValue(), 4, 2);
-        createForwardClient(getHost(), forwardPort, proxy.getProtocol(), proxy.getServiceHost(), proxy.getServicePort());
+        createForwardClient(getHost(), proxyResult.getForwardServerPort(), proxy.getProtocol(),
+                proxy.getServiceHost(), proxy.getServicePort());
     }
 
     private class TlvHandler extends ChannelInboundHandlerAdapter {
@@ -98,9 +99,9 @@ public class ManagementClient extends TcpClient {
             if (tlv.getType() == TypeConstant.PONG) {
                 reporter.debug("receive from managementServer: pong");
             } else if (tlv.getType() == TypeConstant.SUCCESS || tlv.getType() == TypeConstant.FAILED) {
-                SocketFuture<Tlv> future = requestFuture.remove(Bytes.toInt(tlv.getValue(), 0, 4));
+                SocketFuture<ProxyResult> future = requestFuture.remove(tlv.getValue().readInt());
                 if (future != null) {
-                    future.set(tlv);
+                    future.set(new ProxyResult(tlv.getType(), tlv.getValue().readUnsignedShort()));
                 }
             }
         }
