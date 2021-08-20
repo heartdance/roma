@@ -12,4 +12,6 @@ public interface Reporter {
     void warn(String msg);
 
     void error(String msg);
+
+    void error(String msg, Throwable t);
 }

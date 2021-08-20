@@ -6,6 +6,8 @@ import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.SocketFuture;
 import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
+import com.hidebush.roma.util.exception.ErrorCode;
+import com.hidebush.roma.util.exception.ExceptionHandler;
 import com.hidebush.roma.util.exception.RomaException;
 import com.hidebush.roma.util.network.TcpClient;
 import com.hidebush.roma.util.network.TlvDecoder;
@@ -23,6 +25,8 @@ import io.netty.handler.timeout.IdleStateHandler;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -57,7 +61,8 @@ public class ManagementClient extends TcpClient {
                 .addLast(new IdleStateHandler(300, 30, 0))
                 .addLast(new TlvEncoder(1, 2))
                 .addLast(new TlvDecoder(1, 2))
-                .addLast(new TlvHandler());
+                .addLast(new TlvHandler())
+                .addLast(new ExceptionHandler(reporter));
     }
 
     private ProxyResult sendCreateProxyMsgAndGetResponse(Protocol protocol, int proxyPort) {
@@ -69,9 +74,11 @@ public class ManagementClient extends TcpClient {
         int type = protocol == Protocol.TCP ? TypeConstant.CREATE_TCP_PROXY : TypeConstant.CREATE_UDP_PROXY;
         getChannel().writeAndFlush(new Tlv(type, out));
         try {
-            return future.get();
+            return future.get(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
-            return null;
+            throw new RomaException(ErrorCode.INTERRUPTED);
+        } catch (TimeoutException e) {
+            throw new RomaException(ErrorCode.TIMEOUT);
         }
     }
 
@@ -85,10 +92,13 @@ public class ManagementClient extends TcpClient {
     public void createProxy(Proxy proxy) {
         reporter.debug("send to managementServer: create proxy " + proxy);
         ProxyResult proxyResult = sendCreateProxyMsgAndGetResponse(proxy.getProtocol(), proxy.getPort());
-        if (proxyResult == null || proxyResult.getType() != TypeConstant.SUCCESS) {
-            throw new RomaException("create proxy " + proxy + " failed");
+        if (proxyResult == null) {
+            throw new RomaException(ErrorCode.UNKNOWN);
         }
-        createForwardClient(getHost(), proxyResult.getForwardServerPort(), proxy.getProtocol(),
+        if (!proxyResult.success()) {
+            throw new RomaException(ErrorCode.ofCode(proxyResult.errorCode()));
+        }
+        createForwardClient(getHost(), proxyResult.forwardServerPort(), proxy.getProtocol(),
                 proxy.getServiceHost(), proxy.getServicePort());
     }
 
@@ -98,10 +108,15 @@ public class ManagementClient extends TcpClient {
             Tlv tlv = (Tlv) msg;
             if (tlv.getType() == TypeConstant.PONG) {
                 reporter.debug("receive from managementServer: pong");
-            } else if (tlv.getType() == TypeConstant.SUCCESS || tlv.getType() == TypeConstant.FAILED) {
+            } else if (tlv.getType() == TypeConstant.SUCCESS) {
                 SocketFuture<ProxyResult> future = requestFuture.remove(tlv.getValue().readInt());
                 if (future != null) {
-                    future.set(new ProxyResult(tlv.getType(), tlv.getValue().readUnsignedShort()));
+                    future.set(ProxyResult.success(tlv.getValue().readUnsignedShort()));
+                }
+            } else if (tlv.getType() == TypeConstant.FAILED) {
+                SocketFuture<ProxyResult> future = requestFuture.remove(tlv.getValue().readInt());
+                if (future != null) {
+                    future.set(ProxyResult.failure(tlv.getValue().readUnsignedShort()));
                 }
             }
         }

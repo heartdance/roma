@@ -36,6 +36,12 @@ public class ConsoleReporter implements Reporter {
         out("ERROR", msg);
     }
 
+    @Override
+    public void error(String msg, Throwable t) {
+        error(msg + ": " + t.getClass().getName() + " cause by " + t.getCause());
+        t.printStackTrace();
+    }
+
     private void out(String level, String msg) {
         System.out.println(formatter.format(LocalDateTime.now()) + " [" + level + "] " + roleDisplayName + " " + msg);
     }

@@ -3,6 +3,7 @@ package com.hidebush.roma.server.network;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
+import com.hidebush.roma.util.exception.ExceptionHandler;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
@@ -61,7 +62,8 @@ public class ForwardServer extends TcpServer {
                 .addLast(new IdleStateHandler(300, 0, 0))
                 .addLast(new TlvEncoder(1, 4))
                 .addLast(new TlvDecoder(1, 4))
-                .addLast(new TlvHandler());
+                .addLast(new TlvHandler())
+                .addLast(new ExceptionHandler(reporter));
     }
 
     public void sendConnectMsgToForwardClient(int visitorId) {
@@ -114,7 +116,7 @@ public class ForwardServer extends TcpServer {
             if (evt instanceof IdleStateEvent) {
                 IdleState state = ((IdleStateEvent) evt).state();
                 if (state == IdleState.READER_IDLE) {
-                    reporter.error("disconnect forwardClient " + ctx.channel().remoteAddress() +
+                    reporter.warn("disconnect forwardClient " + ctx.channel().remoteAddress() +
                             " because of reader timeout");
                     ctx.channel().close();
                 }

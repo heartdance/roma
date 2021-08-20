@@ -1,6 +1,7 @@
 package com.hidebush.roma.client.network;
 
 import com.hidebush.roma.util.entity.Protocol;
+import com.hidebush.roma.util.exception.ExceptionHandler;
 import com.hidebush.roma.util.network.NettyClient;
 import com.hidebush.roma.util.network.TcpClient;
 import com.hidebush.roma.util.network.UdpClient;
@@ -43,7 +44,8 @@ public class ServiceClient implements NettyClient {
                 @Override
                 protected void initChannel(SocketChannel ch) {
                     ch.pipeline().addLast(new ServiceHandler())
-                            .addLast(new ChannelOutboundHandlerAdapter());
+                            .addLast(new ChannelOutboundHandlerAdapter())
+                            .addLast(new ExceptionHandler(reporter));
                 }
             };
         } else {
@@ -51,7 +53,8 @@ public class ServiceClient implements NettyClient {
                 @Override
                 protected void initChannel(NioDatagramChannel ch) {
                     ch.pipeline().addLast(new ServiceUdpHandler())
-                            .addLast(new ChannelOutboundHandlerAdapter());
+                            .addLast(new ChannelOutboundHandlerAdapter())
+                            .addLast(new ExceptionHandler(reporter));
                 }
             };
         }

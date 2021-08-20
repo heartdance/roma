@@ -4,6 +4,8 @@ import com.hidebush.roma.server.entity.ClientInfo;
 import com.hidebush.roma.util.config.TypeConstant;
 import com.hidebush.roma.util.entity.Protocol;
 import com.hidebush.roma.util.entity.Tlv;
+import com.hidebush.roma.util.exception.ExceptionHandler;
+import com.hidebush.roma.util.exception.RomaException;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.network.TlvDecoder;
 import com.hidebush.roma.util.network.TlvEncoder;
@@ -53,7 +55,8 @@ public class ManagementServer extends TcpServer {
                 .addLast(new IdleStateHandler(300, 0, 0))
                 .addLast(new TlvEncoder(1, 2))
                 .addLast(new TlvDecoder(1, 2))
-                .addLast(new TlvHandler());
+                .addLast(new TlvHandler())
+                .addLast(new ExceptionHandler(reporter));
     }
 
     private ForwardServer createForwardServer(ChannelId clientId, Protocol protocol, int visitorServerPort) {
@@ -85,7 +88,16 @@ public class ManagementServer extends TcpServer {
                 int msgId = tlv.getValue().readInt();
                 int port = tlv.getValue().readUnsignedShort();
                 reporter.info("create " + protocol + " proxy on port " + port);
-                ForwardServer forwardServer = createForwardServer(ctx.channel().id(), protocol, port);
+                ForwardServer forwardServer;
+                try {
+                    forwardServer = createForwardServer(ctx.channel().id(), protocol, port);
+                } catch (RomaException e) {
+                    ByteBuf out = ctx.alloc().ioBuffer(6)
+                            .writeInt(msgId)
+                            .writeShort(e.getErrorCode().code());
+                    ctx.writeAndFlush(new Tlv(TypeConstant.FAILED, out));
+                    return;
+                }
                 reporter.debug("send to managementClient: " + protocol + " proxy on port " + port + " created");
                 ByteBuf out = ctx.alloc().ioBuffer(6)
                         .writeInt(msgId)

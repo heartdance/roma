@@ -5,7 +5,7 @@ import com.hidebush.roma.util.entity.Protocol;
 /**
  * Created by htf on 2021/8/12.
  */
-public class Proxy {
+public final class Proxy {
 
     private final Protocol protocol;
 

@@ -1,5 +1,7 @@
 package com.hidebush.roma.util.network;
 
+import com.hidebush.roma.util.exception.ErrorCode;
+import com.hidebush.roma.util.exception.RomaException;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -41,6 +43,11 @@ public abstract class TcpServer implements NettyServer {
                 channel = future.channel();
                 InetSocketAddress socketAddress = (InetSocketAddress) channel.localAddress();
                 localPort = socketAddress.getPort();
+            } else {
+                if (localPort == 0) {
+                    throw new RomaException(ErrorCode.NO_FREE_PORT);
+                }
+                throw new RomaException(ErrorCode.PORT_OCCUPIED);
             }
         } catch (InterruptedException ignored) {
         }

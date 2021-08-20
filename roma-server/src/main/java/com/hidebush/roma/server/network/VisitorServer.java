@@ -1,6 +1,7 @@
 package com.hidebush.roma.server.network;
 
 import com.hidebush.roma.util.entity.Protocol;
+import com.hidebush.roma.util.exception.ExceptionHandler;
 import com.hidebush.roma.util.network.NettyServer;
 import com.hidebush.roma.util.network.TcpServer;
 import com.hidebush.roma.util.network.UdpServer;
@@ -43,7 +44,8 @@ public class VisitorServer implements NettyServer {
                 @Override
                 protected void initChannel(SocketChannel ch) {
                     ch.pipeline().addLast(new VisitorHandler())
-                            .addLast(new ChannelOutboundHandlerAdapter());
+                            .addLast(new ChannelOutboundHandlerAdapter())
+                            .addLast(new ExceptionHandler(reporter));
                 }
             };
         } else {
@@ -51,7 +53,8 @@ public class VisitorServer implements NettyServer {
                 @Override
                 protected void initChannel(NioDatagramChannel ch) {
                     ch.pipeline().addLast(new VisitorUdpHandler())
-                            .addLast(new ChannelOutboundHandlerAdapter());
+                            .addLast(new ChannelOutboundHandlerAdapter())
+                            .addLast(new ExceptionHandler(reporter));
                 }
             };
         }

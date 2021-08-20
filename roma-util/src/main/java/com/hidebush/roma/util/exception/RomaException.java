@@ -5,10 +5,18 @@ package com.hidebush.roma.util.exception;
  */
 public class RomaException extends RuntimeException {
 
-    public RomaException() {
+    private final ErrorCode errorCode;
+
+    public RomaException(ErrorCode errorCode) {
+        this.errorCode = errorCode;
     }
 
-    public RomaException(String message) {
-        super(message);
+    public ErrorCode getErrorCode() {
+        return errorCode;
+    }
+
+    @Override
+    public String getMessage() {
+        return errorCode.message();
     }
 }

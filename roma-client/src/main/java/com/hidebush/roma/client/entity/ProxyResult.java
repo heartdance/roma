@@ -5,20 +5,35 @@ package com.hidebush.roma.client.entity;
  */
 public class ProxyResult {
 
-    private final int type;
+    private final boolean success;
 
     private final int forwardServerPort;
 
-    public ProxyResult(int type, int forwardServerPort) {
-        this.type = type;
+    private final int errorCode;
+
+    private ProxyResult(boolean success, int forwardServerPort, int errorCode) {
+        this.success = success;
         this.forwardServerPort = forwardServerPort;
+        this.errorCode = errorCode;
     }
 
-    public int getType() {
-        return type;
+    public static ProxyResult success(int forwardServerPort) {
+        return new ProxyResult(true, forwardServerPort, 0);
     }
 
-    public int getForwardServerPort() {
+    public static ProxyResult failure(int errorCode) {
+        return new ProxyResult(false, 0, errorCode);
+    }
+
+    public boolean success() {
+        return success;
+    }
+
+    public int forwardServerPort() {
         return forwardServerPort;
+    }
+
+    public int errorCode() {
+        return errorCode;
     }
 }
